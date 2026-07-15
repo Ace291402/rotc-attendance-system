@@ -1,8 +1,35 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download } from 'lucide-react';
+import { fetchReport } from '../api';
 
 export default function Reports() {
   const [gen, setGen] = useState(false);
+  const [report, setReport] = useState<{ weeklySummary: string; pendingReview: number; exportReady: number } | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await fetchReport();
+        setReport(data);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    load();
+  }, []);
+
+  const reportItems = report
+    ? [
+        { label: 'Weekly summary', value: report.weeklySummary, detail: 'Attendance reliability' },
+        { label: 'Pending review', value: String(report.pendingReview), detail: 'Late arrivals' },
+        { label: 'Export ready', value: String(report.exportReady), detail: 'Reports prepared' }
+      ]
+    : [
+        { label: 'Weekly summary', value: 'Loading…', detail: 'Attendance reliability' },
+        { label: 'Pending review', value: '—', detail: 'Late arrivals' },
+        { label: 'Export ready', value: '—', detail: 'Reports prepared' }
+      ];
 
   return (
     <div className="space-y-6">
@@ -12,11 +39,7 @@ export default function Reports() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {[
-          { label: 'Weekly summary', value: '96%', detail: 'Attendance reliability' },
-          { label: 'Pending review', value: '4', detail: 'Late arrivals' },
-          { label: 'Export ready', value: '2', detail: 'Reports prepared' }
-        ].map((item) => (
+        {reportItems.map((item) => (
           <div key={item.label} className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{item.label}</p>
             <p className="mt-2 text-2xl font-semibold text-slate-900">{item.value}</p>

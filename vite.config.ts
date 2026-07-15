@@ -8,4 +8,13 @@ export default defineConfig({
     react(),
     tailwindcss(), // Adds the Tailwind v4 compiler
   ],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://localhost:7055',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
 })

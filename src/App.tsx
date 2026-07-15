@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Login from './pages/Login';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Cadets from './pages/Cadets';
 import Reports from './pages/Reports';
-import { ShieldAlert, History, UserCheck, Calendar, CheckCircle, QrCode, User, FileText, AlertTriangle } from 'lucide-react';
-
-type Role = 'admin' | 'officer' | 'cadet';
+import { UserCheck, QrCode, FileText, AlertTriangle, User } from 'lucide-react';
+import { loginUser, registerUser, fetchCadets, setToken, clearToken } from './api.ts';
+import type { ApiCadet, Cadet, Role } from './types';
 
 interface AuditLog {
   id: string;
@@ -18,88 +18,86 @@ interface AuditLog {
   isSuspicious: boolean; 
 }
 
-interface CadetProfile {
-  id: string;
-  name: string;
-  sn: string;
-  platoon: string;
-  status: string;
-  // Bag-ong profile fields para sa admin ug cadet view
-  rank: string;
-  courseYear: string;
-  totalPresent: number;
-  totalAbsent: number;
-  requirements: {
-    birthCertificate: boolean;
-    medicalClearance: boolean;
-    rotcForm1: boolean;
-  };
-}
-
 export default function App() {
   const [session, setSession] = useState<{ username: string; role: Role; name: string; platoon?: string } | null>(null);
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [isScanning, setIsScanning] = useState(false);
   
   // State para sa pag-view sa profile (para sa Admin)
-  const [selectedCadetProfile, setSelectedCadetProfile] = useState<CadetProfile | null>(null);
+  const [selectedCadetProfile, setSelectedCadetProfile] = useState<Cadet | null>(null);
 
   // Gipadak-an nga Data Registry nga naay Profile ug Attendance Analytics
-  const [cadetRoster, setCadetRoster] = useState<CadetProfile[]>([
-    { 
-      id: 'c1', 
-      name: 'Cadet Juan Dela Cruz', 
-      sn: '2026-ROTC-0492', 
-      platoon: 'Platoon Alpha', 
-      status: 'Unaccounted',
-      rank: 'Cadet Private',
-      courseYear: 'BSIT - 1st Year',
-      totalPresent: 8,
-      totalAbsent: 0,
-      requirements: { birthCertificate: true, medicalClearance: true, rotcForm1: true } // KOMPLETO
-    },
-    { 
-      id: 'c2', 
-      name: 'Cadet Mark Perez', 
-      sn: '2026-ROTC-1102', 
-      platoon: 'Platoon Bravo', 
-      status: 'Absent',
-      rank: 'Cadet Private',
-      courseYear: 'BSCRIM - 2nd Year',
-      totalPresent: 6,
-      totalAbsent: 2,
-      requirements: { birthCertificate: true, medicalClearance: false, rotcForm1: true } // KULANG OGMEDICAL
-    }
-  ]);
-
-  const [userDatabase, setUserDatabase] = useState([
-    { username: 'admin@rotc.edu', role: 'admin' as Role, name: 'Col. Ramos (Commandant)' },
-    { username: 'officerA@rotc.edu', role: 'officer' as Role, name: 'Cdt/Lt. Fletcher', platoon: 'Platoon Alpha' },
-    { username: 'officerB@rotc.edu', role: 'officer' as Role, name: 'Cdt/Lt. Santos', platoon: 'Platoon Bravo' },
-    { username: 'cadet@rotc.edu', role: 'cadet' as Role, name: 'Cadet Juan Dela Cruz', platoon: 'Platoon Alpha' },
-  ]);
+  const [cadetRoster, setCadetRoster] = useState<Cadet[]>([]);
 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([
     { id: '1', timestamp: '2026-07-11 06:15H', officerName: 'Cdt/Lt. Fletcher', platoon: 'Platoon Alpha', cadetName: 'Cadet Juan Dela Cruz', action: 'Standard QR Scan Validation', isSuspicious: false },
   ]);
 
-  const handleRegisterDummy = (firstName: string, lastName: string, username: string, role: Role) => {
-    const exists = userDatabase.find(user => user.username.toLowerCase() === username.toLowerCase());
-    if (exists) return false;
-    const fullName = `Cadet ${firstName} ${lastName}`;
-    const assignedPlatoon = role === 'officer' ? 'Platoon Bravo' : 'Platoon Alpha'; 
-    setUserDatabase(prev => [...prev, { username, role, name: fullName, platoon: assignedPlatoon }]);
-    return true; 
+  const loadCadets = async () => {
+    try {
+      const cadets = await fetchCadets();
+      setCadetRoster(cadets.map((cadet: ApiCadet) => ({
+        id: String(cadet.id),
+        name: cadet.fullName ?? 'Unknown Cadet',
+        serialNumber: cadet.studentNumber ?? 'N/A',
+        sn: cadet.studentNumber ?? 'N/A',
+        platoon: 'Platoon Alpha',
+        status: 'Unaccounted',
+        company: undefined,
+        attendanceRate: 0,
+        rank: 'Cadet Private',
+        courseYear: `${cadet.course ?? 'Unknown'} • ${cadet.yearLevel ?? 'N/A'}`,
+        totalPresent: 0,
+        totalAbsent: 0,
+        requirements: { birthCertificate: false, medicalClearance: false, rotcForm1: false }
+      })));
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  const handleLogin = (username: string) => {
-    const user = userDatabase.find(u => u.username.toLowerCase() === username.toLowerCase());
-    if (user) {
-      setSession({ username: user.name, role: user.role, name: user.name, platoon: user.platoon });
-      setCurrentTab(user.role === 'cadet' ? 'my-attendance' : 'dashboard');
-    } else {
-      alert("Authentication Exception: User credentials not recognized.");
+  useEffect(() => {
+    if (session) {
+      loadCadets();
     }
+  }, [session]);
+
+  const handleRegister = async (username: string, password: string, role: Role) => {
+    try {
+      await registerUser(username, password, role);
+      return true;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
+  };
+
+  const handleLogin = async (username: string, password: string, role: Role) => {
+    try {
+      const auth = await loginUser(username, password, role);
+      if (auth?.token && auth.user) {
+        setToken(auth.token);
+        setSession({
+          username: auth.user.username,
+          role: auth.user.role,
+          name: auth.user.name ?? auth.user.username,
+          platoon: auth.user.platoon ?? 'Platoon Alpha',
+        });
+        setCurrentTab(auth.user.role === 'cadet' ? 'my-attendance' : 'dashboard');
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error(error);
+      return false;
+    }
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setSession(null);
+    setCurrentTab('dashboard');
   };
 
   const triggerSuccessfulQRScan = () => {
@@ -120,14 +118,14 @@ export default function App() {
   };
 
   if (!session) {
-    return <Login onLogin={handleLogin} onRegisterDummy={handleRegisterDummy} />;
+    return <Login onLogin={handleLogin} onRegister={handleRegister} />;
   }
 
   // Pagkuha sa Profile sa kasamtangang naka-login nga Cadet
   const currentCadetProfile = cadetRoster.find(c => c.name === session.name);
 
   return (
-    <Layout username={session.username} role={session.role} currentTab={currentTab} setCurrentTab={setCurrentTab} onLogout={() => setSession(null)}>
+    <Layout username={session.username} role={session.role} currentTab={currentTab} setCurrentTab={setCurrentTab} onLogout={handleLogout}>
       {currentTab === 'dashboard' && <Dashboard />}
       
       {currentTab === 'attendance' && (
@@ -308,7 +306,7 @@ export default function App() {
         </div>
       )}
 
-      {currentTab === 'cadets' && <Cadets role={session.role} />}
+      {currentTab === 'cadets' && <Cadets role={session.role} cadets={cadetRoster} />}
       {currentTab === 'reports' && <Reports />}
       
       {/* ========================================================= */}

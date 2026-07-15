@@ -2,49 +2,43 @@ import { useState } from 'react';
 import { Shield, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 interface LoginProps {
-  onLogin: (username: string) => void;
-  onRegisterDummy: (firstName: string, lastName: string, username: string, role: 'admin' | 'officer' | 'cadet') => boolean;
+  onLogin: (username: string, password: string, role: 'admin' | 'officer' | 'cadet') => Promise<boolean>;
+  onRegister: (username: string, password: string, role: 'admin' | 'officer' | 'cadet') => Promise<boolean>;
 }
 
-export default function Login({ onLogin, onRegisterDummy }: LoginProps) {
+export default function Login({ onLogin, onRegister }: LoginProps) {
   const [isRegistering, setIsRegistering] = useState(false);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'admin' | 'officer' | 'cadet'>('cadet');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const detectRoleFromEmail = (emailStr: string): 'admin' | 'officer' | 'cadet' => {
-    const lower = emailStr.toLowerCase();
-    if (lower.includes('admin')) return 'admin';
-    if (lower.includes('officer') || lower.includes('sir') || lower.includes('maam')) return 'officer';
-    return 'cadet';
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess('');
 
-    if (!email || !password || (isRegistering && (!firstName || !lastName))) {
+    if (!email || !password) {
       setError('Required fields are missing.');
       return;
     }
 
     if (isRegistering) {
-      const assignedRole = detectRoleFromEmail(email);
-      const isSuccess = onRegisterDummy(firstName, lastName, email, assignedRole);
+      const isSuccess = await onRegister(email, password, role);
       
       if (isSuccess) {
-        setSuccess(`Account registered as [${assignedRole.toUpperCase()}]. Proceed to login.`);
+        setSuccess(`Account registered successfully. Please log in.`);
         setIsRegistering(false);
         setPassword('');
       } else {
-        setError('Email already exists in dummy memory database.');
+        setError('Registration failed. Please try again.');
       }
     } else {
-      onLogin(email);
+      const isSuccess = await onLogin(email, password, role);
+      if (!isSuccess) {
+        setError('Unable to authenticate. Check your email and password.');
+      }
     }
   };
 
@@ -100,28 +94,20 @@ export default function Login({ onLogin, onRegisterDummy }: LoginProps) {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {isRegistering && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">First name</label>
-                  <input type="text" placeholder="Fletcher" value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">Last name</label>
-                  <input type="text" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900" />
-                </div>
-              </div>
-            )}
-
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Email address</label>
               <input type="email" placeholder="officer@rotc.edu" value={email} onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900" />
-              {!isRegistering && (
-                <span className="text-[10px] text-slate-400 mt-1 block">Role context auto-derived via school email routing parameters.</span>
-              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Role</label>
+              <select value={role} onChange={(e) => setRole(e.target.value as 'admin' | 'officer' | 'cadet')}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900">
+                <option value="cadet">Cadet</option>
+                <option value="officer">Officer</option>
+                <option value="admin">Admin</option>
+              </select>
             </div>
 
             <div>
