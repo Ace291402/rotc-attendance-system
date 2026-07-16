@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "dgSpecHash": "UKQrR+HJ4Po=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Michael Angelo\\rotc-attendance-system\\RotcAttendance.Api\\RotcAttendance.Api.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.aspnetcore.openapi\\9.0.9\\microsoft.aspnetcore.openapi.9.0.9.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.bcl.cryptography\\10.0.2\\microsoft.bcl.cryptography.10.0.2.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.extensions.dependencyinjection.abstractions\\8.0.0\\microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.extensions.logging.abstractions\\8.0.0\\microsoft.extensions.logging.abstractions.8.0.0.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.identitymodel.abstractions\\8.19.2\\microsoft.identitymodel.abstractions.8.19.2.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.identitymodel.jsonwebtokens\\8.19.2\\microsoft.identitymodel.jsonwebtokens.8.19.2.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.identitymodel.logging\\8.19.2\\microsoft.identitymodel.logging.8.19.2.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.identitymodel.tokens\\8.19.2\\microsoft.identitymodel.tokens.8.19.2.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.openapi\\1.6.17\\microsoft.openapi.1.6.17.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\microsoft.win32.systemevents\\6.0.0\\microsoft.win32.systemevents.6.0.0.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\qrcoder\\1.8.0\\qrcoder.1.8.0.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\system.drawing.common\\6.0.0\\system.drawing.common.6.0.0.nupkg.sha512",
+    "C:\\Users\\Michael Angelo\\.nuget\\packages\\system.identitymodel.tokens.jwt\\8.19.2\\system.identitymodel.tokens.jwt.8.19.2.nupkg.sha512"
+  ],
+  "logs": []
+}
