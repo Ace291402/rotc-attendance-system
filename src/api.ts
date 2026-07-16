@@ -1,5 +1,18 @@
 import type { ApiCadet, Role, Attendance, AuthResponse } from "./types";
 
+interface QrScanResponse {
+  success: boolean;
+  message: string;
+  cadetName?: string;
+}
+
+interface CadetQrResponse {
+  cadetId: number;
+  fullName: string;
+  qrCodeValue: string;
+  qrCodeImageBase64?: string;
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 function getToken(): string | null {
@@ -59,12 +72,11 @@ export async function registerUser(
   username: string,
   password: string,
   role: Role
-): Promise<boolean> {
-  await request<void>("/api/Authentication/register", {
-    method: "POST",
+): Promise<{ success: boolean; message: string }> {
+  return request<{ success: boolean; message: string }>('/api/Authentication/register', {
+    method: 'POST',
     body: JSON.stringify({ username, password, role }),
   });
-  return true;
 }
 
 export async function logoutUser(): Promise<void> {
@@ -107,6 +119,23 @@ export async function updateAttendance(
   return request<Attendance>(`/api/Attendance/attendance/${id}`, {
     method: "PUT",
     body: JSON.stringify(attendance),
+  });
+}
+
+export async function generateCadetQr(cadetId: number | string): Promise<CadetQrResponse> {
+  return request<CadetQrResponse>(`/api/Cadets/cadets/${cadetId}/qr`, {
+    method: "POST",
+  });
+}
+
+export async function getCadetQr(cadetId: number | string): Promise<CadetQrResponse> {
+  return request<CadetQrResponse>(`/api/Cadets/cadets/${cadetId}/qr`);
+}
+
+export async function scanAttendanceQr(qrCodeValue: string, officerName: string): Promise<QrScanResponse> {
+  return request<QrScanResponse>("/api/Attendance/scan", {
+    method: "POST",
+    body: JSON.stringify({ qrCodeValue, officerName }),
   });
 }
 

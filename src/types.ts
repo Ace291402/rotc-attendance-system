@@ -14,6 +14,8 @@ export interface ApiCadet {
   fullName: string | null;
   course: string | null;
   yearLevel: string | null;
+  qrCodeValue?: string | null;
+  qrCodeImageBase64?: string | null;
 }
 
 export interface Cadet {
@@ -56,6 +58,7 @@ export interface AttendanceRecord {
 export interface AuthResponse {
   token: string;
   user: User;
+  cadet?: ApiCadet;
 }
 
 export interface AttendanceReport {

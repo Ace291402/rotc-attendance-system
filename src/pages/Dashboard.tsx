@@ -1,4 +1,40 @@
+import { useEffect, useState } from 'react';
+import { fetchAttendance, fetchCadets, fetchReport } from '../api';
+
 export default function Dashboard() {
+  const [stats, setStats] = useState({ cadetCount: 0, presentToday: 0, pendingReview: 0, exportReady: 0 });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const [cadets, attendance, report] = await Promise.all([fetchCadets(), fetchAttendance(), fetchReport()]);
+        const today = new Date().toISOString().slice(0, 10);
+        const presentToday = attendance.filter((item) => item.date === today).length;
+
+        setStats({
+          cadetCount: cadets.length,
+          presentToday,
+          pendingReview: report.pendingReview,
+          exportReady: report.exportReady,
+        });
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadStats();
+  }, []);
+
+  const cards = [
+    { label: 'Cadets enrolled', value: loading ? '…' : String(stats.cadetCount), detail: 'Active roster', tone: 'text-slate-900' },
+    { label: 'Present today', value: loading ? '…' : String(stats.presentToday), detail: 'Recorded from the API', tone: 'text-emerald-600' },
+    { label: 'Pending review', value: loading ? '…' : String(stats.pendingReview), detail: 'Needs follow-up', tone: 'text-amber-600' },
+    { label: 'Reports ready', value: loading ? '…' : String(stats.exportReady), detail: 'Ready for export', tone: 'text-slate-900' }
+  ];
+
   return (
     <div className="space-y-6">
       <div className="rounded-[24px] border border-slate-200 bg-gradient-to-r from-[#0F3D2E] to-emerald-800 p-6 text-white shadow-sm">
@@ -8,12 +44,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        {[
-          { label: 'Cadets enrolled', value: '45', detail: 'Active roster', tone: 'text-slate-900' },
-          { label: 'Present today', value: '42', detail: 'On track', tone: 'text-emerald-600' },
-          { label: 'Late arrivals', value: '2', detail: 'Needs review', tone: 'text-amber-600' },
-          { label: 'Readiness', value: '93.3%', detail: 'Healthy outlook', tone: 'text-slate-900' }
-        ].map((card) => (
+        {cards.map((card) => (
           <div key={card.label} className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{card.label}</p>
             <p className={`mt-2 text-2xl font-semibold ${card.tone}`}>{card.value}</p>
@@ -32,16 +63,16 @@ export default function Dashboard() {
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Stable</span>
           </div>
           <div className="flex h-44 items-center justify-center rounded-[20px] border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400">
-            Chart view placeholder
+            {loading ? 'Loading attendance data…' : `${stats.presentToday} records marked today`}
           </div>
         </div>
 
         <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Quick actions</h2>
           <div className="mt-4 space-y-3 text-sm text-slate-600">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Review pending attendance updates</div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Open cadet profile records</div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Export the latest reports</div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Review the latest API-backed attendance updates</div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Open cadet profile data from the backend roster</div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Export the latest generated report</div>
           </div>
         </div>
       </div>

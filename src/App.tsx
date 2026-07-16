@@ -5,7 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Cadets from './pages/Cadets';
 import Reports from './pages/Reports';
 import { UserCheck, QrCode, FileText, AlertTriangle, User } from 'lucide-react';
-import { loginUser, registerUser, fetchCadets, setToken, clearToken } from './api.ts';
+import { loginUser, registerUser, fetchCadets, fetchAttendance, setToken, clearToken, scanAttendanceQr, getCadetQr } from './api.ts';
 import type { ApiCadet, Cadet, Role } from './types';
 
 interface AuditLog {
@@ -19,9 +19,11 @@ interface AuditLog {
 }
 
 export default function App() {
-  const [session, setSession] = useState<{ username: string; role: Role; name: string; platoon?: string } | null>(null);
+  const [session, setSession] = useState<{ username: string; role: Role; name: string; platoon?: string; cadetId?: number } | null>(null);
   const [currentTab, setCurrentTab] = useState('dashboard');
   const [isScanning, setIsScanning] = useState(false);
+  const [qrInput, setQrInput] = useState('');
+  const [cadetQr, setCadetQr] = useState<{ qrCodeValue?: string; qrCodeImageBase64?: string } | null>(null);
   
   // State para sa pag-view sa profile (para sa Admin)
   const [selectedCadetProfile, setSelectedCadetProfile] = useState<Cadet | null>(null);
@@ -35,22 +37,36 @@ export default function App() {
 
   const loadCadets = async () => {
     try {
-      const cadets = await fetchCadets();
-      setCadetRoster(cadets.map((cadet: ApiCadet) => ({
-        id: String(cadet.id),
-        name: cadet.fullName ?? 'Unknown Cadet',
-        serialNumber: cadet.studentNumber ?? 'N/A',
-        sn: cadet.studentNumber ?? 'N/A',
-        platoon: 'Platoon Alpha',
-        status: 'Unaccounted',
-        company: undefined,
-        attendanceRate: 0,
-        rank: 'Cadet Private',
-        courseYear: `${cadet.course ?? 'Unknown'} • ${cadet.yearLevel ?? 'N/A'}`,
-        totalPresent: 0,
-        totalAbsent: 0,
-        requirements: { birthCertificate: false, medicalClearance: false, rotcForm1: false }
-      })));
+      const [cadets, attendance] = await Promise.all([fetchCadets(), fetchAttendance()]);
+      const today = new Date().toISOString().slice(0, 10);
+      const presentByCadet = new Map<number, number>();
+
+      attendance.forEach((record) => {
+        if (record.date === today) {
+          const cadetId = Number(record.cadetId);
+          presentByCadet.set(cadetId, (presentByCadet.get(cadetId) ?? 0) + 1);
+        }
+      });
+
+      setCadetRoster(cadets.map((cadet: ApiCadet) => {
+        const presentCount = presentByCadet.get(cadet.id) ?? 0;
+
+        return {
+          id: String(cadet.id),
+          name: cadet.fullName ?? 'Unknown Cadet',
+          serialNumber: cadet.studentNumber ?? 'N/A',
+          sn: cadet.studentNumber ?? 'N/A',
+          platoon: 'Platoon Alpha',
+          status: presentCount > 0 ? 'Present' : 'Unaccounted',
+          company: undefined,
+          attendanceRate: presentCount > 0 ? 100 : 0,
+          rank: 'Cadet Private',
+          courseYear: `${cadet.course ?? 'Unknown'} • ${cadet.yearLevel ?? 'N/A'}`,
+          totalPresent: presentCount,
+          totalAbsent: presentCount > 0 ? 0 : 1,
+          requirements: { birthCertificate: false, medicalClearance: false, rotcForm1: false }
+        };
+      }));
     } catch (error) {
       console.error(error);
     }
@@ -64,8 +80,8 @@ export default function App() {
 
   const handleRegister = async (username: string, password: string, role: Role) => {
     try {
-      await registerUser(username, password, role);
-      return true;
+      const result = await registerUser(username, password, role);
+      return result.success;
     } catch (error) {
       console.error(error);
       return false;
@@ -82,7 +98,14 @@ export default function App() {
           role: auth.user.role,
           name: auth.user.name ?? auth.user.username,
           platoon: auth.user.platoon ?? 'Platoon Alpha',
+          cadetId: auth.cadet?.id,
         });
+
+        if (auth.cadet?.id) {
+          const qr = await getCadetQr(auth.cadet.id);
+          setCadetQr(qr);
+        }
+
         setCurrentTab(auth.user.role === 'cadet' ? 'my-attendance' : 'dashboard');
         return true;
       }
@@ -100,21 +123,35 @@ export default function App() {
     setCurrentTab('dashboard');
   };
 
-  const triggerSuccessfulQRScan = () => {
-    setIsScanning(false);
-    setCadetRoster(prev => prev.map(c => c.id === 'c1' ? { ...c, status: 'Present', totalPresent: c.totalPresent + 1 } : c));
-    
-    const newLog: AuditLog = {
-      id: String(auditLogs.length + 1),
-      timestamp: 'Karon Lang',
-      officerName: session?.name || 'Officer',
-      platoon: session?.platoon || 'Field Command',
-      cadetName: 'Cadet Juan Dela Cruz',
-      action: 'Encrypted QR Code Auth Signature Verified via Mobile Lens',
-      isSuspicious: false
-    };
-    setAuditLogs(prev => [newLog, ...prev]);
-    alert("⚡ QR Code Verified: Cadet Juan Dela Cruz has been logged as PRESENT.");
+  const triggerSuccessfulQRScan = async () => {
+    if (!session) {
+      return;
+    }
+
+    try {
+      const response = await scanAttendanceQr(qrInput.trim() || 'demo-qr-code', session.name);
+      setIsScanning(false);
+
+      if (response.success) {
+        const newLog: AuditLog = {
+          id: String(auditLogs.length + 1),
+          timestamp: new Date().toLocaleString(),
+          officerName: session.name,
+          platoon: session.platoon || 'Field Command',
+          cadetName: response.cadetName || 'Cadet',
+          action: 'QR Scan Recorded via Backend',
+          isSuspicious: false
+        };
+        setAuditLogs(prev => [newLog, ...prev]);
+        await loadCadets();
+        alert(`⚡ ${response.message}`);
+      } else {
+        alert(`⚠️ ${response.message}`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Could not process QR scan.');
+    }
   };
 
   if (!session) {
@@ -122,7 +159,7 @@ export default function App() {
   }
 
   // Pagkuha sa Profile sa kasamtangang naka-login nga Cadet
-  const currentCadetProfile = cadetRoster.find(c => c.name === session.name);
+  const currentCadetProfile = cadetRoster.find(c => Number(c.id) === (session.cadetId ?? -1)) ?? cadetRoster.find(c => c.name === session.name) ?? null;
 
   return (
     <Layout username={session.username} role={session.role} currentTab={currentTab} setCurrentTab={setCurrentTab} onLogout={handleLogout}>
@@ -174,7 +211,13 @@ export default function App() {
                     <div className="absolute w-full h-0.5 bg-emerald-400 top-1/2 left-0 animate-bounce"></div>
                   </div>
                   <div className="w-full max-w-xs space-y-3 pb-8">
-                    <button onClick={triggerSuccessfulQRScan} className="w-full py-3 bg-emerald-600 rounded-xl text-xs font-bold">[Simulate QR Scan]</button>
+                    <input
+                      value={qrInput}
+                      onChange={(event) => setQrInput(event.target.value)}
+                      placeholder="Paste or type QR value"
+                      className="w-full rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white outline-none"
+                    />
+                    <button onClick={triggerSuccessfulQRScan} className="w-full py-3 bg-emerald-600 rounded-xl text-xs font-bold">Submit QR Scan</button>
                     <button onClick={() => setIsScanning(false)} className="w-full py-2.5 bg-slate-800 text-slate-300 rounded-xl text-xs">Cancel</button>
                   </div>
                 </div>
@@ -388,9 +431,13 @@ export default function App() {
               <p className="text-[10px] text-slate-400 mt-0.5">Show this to the Platoon Inspector during formation checks.</p>
             </div>
             <div className="p-4 bg-slate-50 border-2 border-slate-200 rounded-2xl shadow-inner">
-              <QrCode size={160} className="text-slate-800" />
+              {cadetQr?.qrCodeImageBase64 ? (
+                <img src={`data:image/png;base64,${cadetQr.qrCodeImageBase64}`} alt="Cadet QR Code" className="h-40 w-40 object-contain" />
+              ) : (
+                <QrCode size={160} className="text-slate-800" />
+              )}
             </div>
-            <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded">TOKEN_ID::{currentCadetProfile.sn}</span>
+            <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-2 py-1 rounded">{cadetQr?.qrCodeValue ? `TOKEN_ID::${cadetQr.qrCodeValue}` : `TOKEN_ID::${currentCadetProfile.sn}`}</span>
           </div>
         </div>
       )}

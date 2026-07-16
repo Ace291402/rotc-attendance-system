@@ -77,7 +77,7 @@ export default function Login({ onLogin, onRegister }: LoginProps) {
               {isRegistering ? 'Create an account' : 'Welcome back'}
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              {isRegistering ? 'Register your fields to establish a local dummy session.' : 'Use your details to open the attendance dashboard.'}
+              {isRegistering ? 'Register your account to create a real backend record.' : 'Use your credentials to sign in to the live API-backed dashboard.'}
             </p>
           </div>
 
