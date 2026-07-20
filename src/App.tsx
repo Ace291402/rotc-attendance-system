@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Cadets from './pages/Cadets';
 import Reports from './pages/Reports';
+import './index.css'; // <-- Import Tailwind CSS
 import { UserCheck, QrCode, FileText, AlertTriangle, User } from 'lucide-react';
 import { loginUser, registerUser, fetchCadets, fetchAttendance, setToken, clearToken, scanAttendanceQr, getCadetQr } from './api.ts';
 import type { ApiCadet, Cadet, Role } from './types';
