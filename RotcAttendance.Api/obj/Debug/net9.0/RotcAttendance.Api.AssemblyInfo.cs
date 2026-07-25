@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RotcAttendance.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+28b8691a9e2a3ea25ddbb7fe335dcbb3305b3594")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cdc7cf8383a0da41dd10886b4a59ea0b3b963224")]
 [assembly: System.Reflection.AssemblyProductAttribute("RotcAttendance.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RotcAttendance.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

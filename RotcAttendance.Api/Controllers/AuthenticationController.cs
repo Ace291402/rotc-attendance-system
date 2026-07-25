@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using RotcAttendance.Api.Data;
 using RotcAttendance.Api.Models;
 using RotcAttendance.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -26,6 +27,7 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("register")]
+    [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         if (await _context.Users.AnyAsync(u => u.Username == request.Username))
@@ -45,36 +47,40 @@ public class AuthenticationController : ControllerBase
         await _context.Users.AddAsync(user);
         await _context.SaveChangesAsync();
 
-        var qrValue = _qrService.GenerateUniqueValue();
-        var cadet = new CadetProfile
+        CadetProfile? cadet = null;
+        if (string.Equals(request.Role, "cadet", StringComparison.OrdinalIgnoreCase))
         {
-            UserId = user.Id,
-            FullName = request.Username,
-            Email = request.Username,
-            QrCodeValue = qrValue,
-            QrCodeImageBase64 = _qrService.GeneratePngBase64(qrValue)
-        };
+            var qrValue = _qrService.GenerateUniqueValue();
+            cadet = new CadetProfile
+            {
+                UserId = user.Id,
+                FullName = request.Username,
+                Email = request.Username,
+                QrCodeValue = qrValue,
+                QrCodeImageBase64 = _qrService.GeneratePngBase64(qrValue)
+            };
 
-        await _context.CadetProfiles.AddAsync(cadet);
-        await _context.SaveChangesAsync();
+            await _context.CadetProfiles.AddAsync(cadet);
+            await _context.SaveChangesAsync();
+        }
 
-        var qr = await _context.CadetProfiles.FindAsync(cadet.Id);
         return Ok(new
         {
             success = true,
             message = "User registered.",
-            cadet = new
+            cadet = cadet is null ? null : new
             {
                 id = cadet.Id,
                 fullName = cadet.FullName,
                 studentNumber = cadet.StudentNumber,
-                qrCodeValue = qr?.QrCodeValue,
-                qrCodeImageBase64 = qr?.QrCodeImageBase64
+                qrCodeValue = cadet.QrCodeValue,
+                qrCodeImageBase64 = cadet.QrCodeImageBase64
             }
         });
     }
 
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == request.Username);
@@ -83,8 +89,13 @@ public class AuthenticationController : ControllerBase
             return Unauthorized(new { message = "Invalid credentials." });
         }
 
+        if (!string.Equals(user.Role, request.Role, StringComparison.OrdinalIgnoreCase))
+        {
+            return Unauthorized(new { message = "Invalid role selection for this user." });
+        }
+
         var token = CreateToken(user);
-        var cadetProfile = await _context.CadetProfiles.SingleOrDefaultAsync(c => c.UserId == user.Id);
+        var cadetProfile = user.Role == "cadet" ? await _context.CadetProfiles.SingleOrDefaultAsync(c => c.UserId == user.Id) : null;
         if (cadetProfile is not null && (string.IsNullOrWhiteSpace(cadetProfile.QrCodeValue) || string.IsNullOrWhiteSpace(cadetProfile.QrCodeImageBase64)))
         {
             var qrValue = _qrService.GenerateUniqueValue();
@@ -110,6 +121,7 @@ public class AuthenticationController : ControllerBase
     }
 
     [HttpPost("logout")]
+    [Authorize]
     public IActionResult Logout() => Ok();
 
     private string CreateToken(User user)

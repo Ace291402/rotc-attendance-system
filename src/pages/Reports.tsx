@@ -1,77 +1,146 @@
 import { useEffect, useState } from 'react';
-import { Download } from 'lucide-react';
-import { fetchReport } from '../api';
+import { AlertCircle, Download, LoaderCircle } from 'lucide-react';
+import { fetchAttendanceReport, fetchAttendance } from '../attendanceService';
+import type { AttendanceReport, Attendance } from '../types';
 
 export default function Reports() {
-  const [gen, setGen] = useState(false);
-  const [report, setReport] = useState<{ weeklySummary: string; pendingReview: number; exportReady: number } | null>(null);
+  const [report, setReport] = useState<AttendanceReport | null>(null);
+  const [records, setRecords] = useState<Attendance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const load = async () => {
+    const loadData = async () => {
+      setLoading(true);
+      setError('');
+
       try {
-        const data = await fetchReport();
-        setReport(data);
-      } catch (error) {
-        console.error(error);
+        const [reportData, attendanceData] = await Promise.all([
+          fetchAttendanceReport(),
+          fetchAttendance(),
+        ]);
+
+        setReport(reportData);
+        setRecords(attendanceData);
+      } catch (loadError) {
+        console.error(loadError);
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load reports.');
+      } finally {
+        setLoading(false);
       }
     };
 
-    load();
+    loadData();
   }, []);
 
-  const reportItems = report
-    ? [
-        { label: 'Weekly summary', value: report.weeklySummary, detail: 'Attendance reliability' },
-        { label: 'Pending review', value: String(report.pendingReview), detail: 'Late arrivals' },
-        { label: 'Export ready', value: String(report.exportReady), detail: 'Reports prepared' }
-      ]
-    : [
-        { label: 'Weekly summary', value: 'Loading…', detail: 'Attendance reliability' },
-        { label: 'Pending review', value: '—', detail: 'Late arrivals' },
-        { label: 'Export ready', value: '—', detail: 'Reports prepared' }
-      ];
+  const handleExportCsv = () => {
+    if (records.length === 0) {
+      alert('No attendance records to export.');
+      return;
+    }
+
+    const headers = ['ID', 'Cadet', 'Date', 'Status'];
+    const rows = records.map((r) => [r.id, r.cadet?.fullName ?? `Cadet ${r.cadetId}`, r.date, r.status]);
+
+    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
-      <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900">Attendance reports</h1>
-        <p className="mt-1 text-sm text-slate-500">Generate clear reports for review and sharing.</p>
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">Reports</h1>
+        <p className="mt-1 text-sm text-slate-500">View attendance reports and export data.</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {reportItems.map((item) => (
-          <div key={item.label} className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{item.label}</p>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{item.value}</p>
-            <p className="mt-1 text-sm text-slate-500">{item.detail}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="space-y-4 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700">Report range</label>
-          <select className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100">
-            <option>Current training cycle</option>
-            <option>Full semester archive</option>
-          </select>
+      {error && (
+        <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle size={14} /> <span>{error}</span>
         </div>
-        <button type="button" onClick={() => setGen(true)} className="rounded-xl bg-[#0F3D2E] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0b2f24]">
-          Generate report
-        </button>
+      )}
 
-        {gen && (
-          <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h4 className="font-semibold text-slate-900">Report is ready</h4>
-              <p className="text-sm text-slate-600">The latest attendance summary has been prepared for export.</p>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <LoaderCircle className="animate-spin text-slate-400" size={24} />
+        </div>
+      ) : (
+        <>
+          {/* Report Summary */}
+          {report && (
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Weekly summary</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900">{report.weeklySummary}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Pending review</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{report.pendingReview}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Export ready</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{report.exportReady}</p>
+              </div>
             </div>
-            <button type="button" onClick={() => alert('Downloading sheet package...')} className="flex items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100">
-              <Download size={14} /> Export Excel
+          )}
+
+          {/* Export Button */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <button
+              onClick={handleExportCsv}
+              className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              <Download size={16} /> Export as CSV
             </button>
           </div>
-        )}
-      </div>
+
+          {/* Attendance Records */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Attendance records</h2>
+            {records.length === 0 ? (
+              <p className="text-sm text-slate-500">No attendance records available.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-2 font-semibold text-slate-700">Cadet</th>
+                      <th className="px-4 py-2 font-semibold text-slate-700">Date</th>
+                      <th className="px-4 py-2 font-semibold text-slate-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {records.map((record) => (
+                      <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="px-4 py-2 font-medium text-slate-900">
+                          {record.cadet?.fullName ?? `Cadet ${record.cadetId}`}
+                        </td>
+                        <td className="px-4 py-2 text-slate-600">{record.date}</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                              record.status === 'Present'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {record.status || '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

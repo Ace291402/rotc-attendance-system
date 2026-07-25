@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import { Shield, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../AuthContext';
 
-interface LoginProps {
-  onLogin: (username: string, password: string, role: 'admin' | 'officer' | 'cadet') => Promise<boolean>;
-  onRegister: (username: string, password: string, role: 'admin' | 'officer' | 'cadet') => Promise<boolean>;
-}
-
-export default function Login({ onLogin, onRegister }: LoginProps) {
+export default function Login() {
+  // Using Auth context
+  const { login: onLogin, register: onRegister } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'admin' | 'officer' | 'cadet'>('cadet');
+  const [role, setRole] = useState<'admin' | 'officer' | 'cadet'>('officer');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using RotcAttendance.Api.Data;
@@ -6,6 +7,7 @@ using RotcAttendance.Api.Services;
 namespace RotcAttendance.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public class CadetsController : ControllerBase
 {
@@ -19,6 +21,7 @@ public class CadetsController : ControllerBase
     }
 
     [HttpGet("cadets")]
+    [Authorize(Roles = "admin,officer")]
     public async Task<IActionResult> GetCadets()
     {
         var cadets = await _context.CadetProfiles
@@ -39,6 +42,7 @@ public class CadetsController : ControllerBase
     }
 
     [HttpPost("cadets/{id:int}/qr")]
+    [Authorize(Roles = "admin,officer")]
     public async Task<IActionResult> GenerateQr(int id)
     {
         var qr = await _attendanceService.GenerateQrForCadetAsync(id);
@@ -57,6 +61,17 @@ public class CadetsController : ControllerBase
         if (qr is null)
         {
             return NotFound(new { message = "Cadet not found." });
+        }
+
+        // If a cadet is requesting the QR, ensure they only retrieve their own code.
+        var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (User.IsInRole("cadet") && int.TryParse(userIdClaim, out var userId))
+        {
+            var cadet = await _context.CadetProfiles.FindAsync(id);
+            if (cadet is null || cadet.UserId != userId)
+            {
+                return Forbid();
+            }
         }
 
         return Ok(qr);

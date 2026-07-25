@@ -1,142 +1,132 @@
-import type { ApiCadet, Role, Attendance, AuthResponse } from "./types";
+﻿import axios, { AxiosError } from 'axios';
+import type { Role } from './types';
 
-interface QrScanResponse {
-  success: boolean;
-  message: string;
-  cadetName?: string;
+const TOKEN_KEY = 'rotc_auth_token';
+const SESSION_KEY = 'rotc_auth_session';
+
+export interface StoredAuthSession {
+	username: string;
+	role: Role;
+	name: string;
+	platoon?: string;
+	cadetId?: number;
 }
 
-interface CadetQrResponse {
-  cadetId: number;
-  fullName: string;
-  qrCodeValue: string;
-  qrCodeImageBase64?: string;
+export class ApiError extends Error {
+	status?: number;
+	data?: unknown;
+
+	constructor(message: string, status?: number, data?: unknown) {
+		super(message);
+		this.name = 'ApiError';
+		this.status = status;
+		this.data = data;
+	}
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const apiBaseUrl = import.meta.env.VITE_API_URL || '';
 
-function getToken(): string | null {
-  return localStorage.getItem("token");
+export const api = axios.create({
+	baseURL: apiBaseUrl,
+	headers: {
+		'Content-Type': 'application/json',
+	},
+});
+
+function readMessage(data: unknown, fallback: string) {
+	if (!data || typeof data !== 'object') {
+		return fallback;
+	}
+
+	const payload = data as Record<string, unknown>;
+	if (typeof payload.message === 'string' && payload.message.trim()) {
+		return payload.message;
+	}
+
+	if (Array.isArray(payload.errors)) {
+		const firstError = payload.errors.find((item) => typeof item === 'string' && item.trim());
+		if (typeof firstError === 'string') {
+			return firstError;
+		}
+	}
+
+	return fallback;
 }
 
-function setToken(token: string) {
-  localStorage.setItem("token", token);
+export function getAuthToken() {
+	return localStorage.getItem(TOKEN_KEY);
 }
 
-function clearToken() {
-  localStorage.removeItem("token");
+export function setAuthToken(token: string) {
+	localStorage.setItem(TOKEN_KEY, token);
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...((options.headers as Record<string, string>) || {}),
-  };
-
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(
-      `API request failed: ${response.status} ${response.statusText} - ${text}`
-    );
-  }
-
-  if (response.status === 204) {
-    return undefined as unknown as T;
-  }
-
-  return response.json();
+export function clearAuthToken() {
+	localStorage.removeItem(TOKEN_KEY);
 }
 
-export async function loginUser(
-  username: string,
-  password: string,
-  role: Role
-): Promise<AuthResponse> {
-  return request<AuthResponse>("/api/Authentication/login", {
-    method: "POST",
-    body: JSON.stringify({ username, password, role }),
-  });
+export function setStoredAuthSession(session: StoredAuthSession) {
+	localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
-export async function registerUser(
-  username: string,
-  password: string,
-  role: Role
-): Promise<{ success: boolean; message: string }> {
-  return request<{ success: boolean; message: string }>('/api/Authentication/register', {
-    method: 'POST',
-    body: JSON.stringify({ username, password, role }),
-  });
+export function getStoredAuthSession(): StoredAuthSession | null {
+	const raw = localStorage.getItem(SESSION_KEY);
+	if (!raw) {
+		return null;
+	}
+
+	try {
+		return JSON.parse(raw) as StoredAuthSession;
+	} catch {
+		return null;
+	}
 }
 
-export async function logoutUser(): Promise<void> {
-  return request<void>("/api/Authentication/logout", {
-    method: "POST",
-  });
+export function clearStoredAuthSession() {
+	localStorage.removeItem(SESSION_KEY);
 }
 
-export async function fetchCadets(): Promise<ApiCadet[]> {
-  return request<ApiCadet[]>("/api/Cadets/cadets");
+export function clearAuthStorage() {
+	clearAuthToken();
+	clearStoredAuthSession();
 }
 
-export async function fetchAttendance(): Promise<Attendance[]> {
-  return request<Attendance[]>("/api/Attendance/attendance");
-}
+api.interceptors.request.use((config) => {
+	const token = getAuthToken();
+	if (token) {
+		config.headers = config.headers ?? {};
+		(config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
+	}
 
-export async function deleteAttendance(id: string | number): Promise<void> {
-  return request<void>(`/api/Attendance/attendance/${id}`, {
-    method: "DELETE",
-  });
-}
+	return config;
+});
 
-export async function fetchReport(): Promise<{ weeklySummary: string; pendingReview: number; exportReady: number }> {
-  return request<{ weeklySummary: string; pendingReview: number; exportReady: number }>("/api/Attendance/report");
-}
+api.interceptors.response.use(
+	(response) => response,
+	(error: AxiosError<unknown>) => {
+		const status = error.response?.status;
+		const data = error.response?.data;
 
-export async function createAttendance(
-  attendance: Omit<Attendance, "id">
-): Promise<Attendance> {
-  return request<Attendance>("/api/Attendance/attendance", {
-    method: "POST",
-    body: JSON.stringify(attendance),
-  });
-}
+		if (status === 401) {
+			clearAuthStorage();
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(new Event('rotc-auth-unauthorized'));
+			}
+		}
 
-export async function updateAttendance(
-  id: string | number,
-  attendance: Omit<Attendance, "id">
-): Promise<Attendance> {
-  return request<Attendance>(`/api/Attendance/attendance/${id}`, {
-    method: "PUT",
-    body: JSON.stringify(attendance),
-  });
-}
+		const message = readMessage(
+			data,
+			status === 401
+				? 'Session expired. Please log in again.'
+				: status === 403
+					? 'You do not have permission to perform this action.'
+					: status === 404
+						? 'The requested resource was not found.'
+						: status === 500
+							? 'The server failed to process this request.'
+							: error.message || 'Request failed.',
+		);
 
-export async function generateCadetQr(cadetId: number | string): Promise<CadetQrResponse> {
-  return request<CadetQrResponse>(`/api/Cadets/cadets/${cadetId}/qr`, {
-    method: "POST",
-  });
-}
-
-export async function getCadetQr(cadetId: number | string): Promise<CadetQrResponse> {
-  return request<CadetQrResponse>(`/api/Cadets/cadets/${cadetId}/qr`);
-}
-
-export async function scanAttendanceQr(qrCodeValue: string, officerName: string): Promise<QrScanResponse> {
-  return request<QrScanResponse>("/api/Attendance/scan", {
-    method: "POST",
-    body: JSON.stringify({ qrCodeValue, officerName }),
-  });
-}
-
-export { setToken, clearToken };
+		return Promise.reject(new ApiError(message, status, data));
+	},
+);

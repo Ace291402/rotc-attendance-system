@@ -1,6 +1,6 @@
 export type Role = 'admin' | 'officer' | 'cadet';
 
-export interface User {
+export interface AuthUser {
   id: number;
   username: string;
   role: Role;
@@ -14,6 +14,18 @@ export interface ApiCadet {
   fullName: string | null;
   course: string | null;
   yearLevel: string | null;
+  qrCodeValue?: string | null;
+  qrCodeImageBase64?: string | null;
+}
+
+export interface CadetProfileResponse {
+  id: number;
+  userId?: number;
+  studentNumber?: string | null;
+  fullName?: string | null;
+  course?: string | null;
+  yearLevel?: string | null;
+  email?: string | null;
   qrCodeValue?: string | null;
   qrCodeImageBase64?: string | null;
 }
@@ -43,6 +55,7 @@ export interface Attendance {
   cadetId: number;
   date: string;
   status?: string | null;
+  notes?: string | null;
   cadet?: ApiCadet;
 }
 
@@ -57,7 +70,7 @@ export interface AttendanceRecord {
 
 export interface AuthResponse {
   token: string;
-  user: User;
+  user: AuthUser;
   cadet?: ApiCadet;
 }
 
@@ -65,4 +78,28 @@ export interface AttendanceReport {
   weeklySummary: string;
   pendingReview: number;
   exportReady: number;
+}
+
+export interface AttendanceSummary {
+  totalCadets?: number;
+  presentToday?: number;
+  absentToday?: number;
+  lateToday?: number;
+  attendancePercentage?: number;
+  attendanceRate?: number;
+  percentage?: number;
+  today?: string;
+}
+
+export interface AttendanceSearchParams {
+  cadetId?: number;
+  date?: string;
+  status?: string;
+}
+
+export interface AttendanceCreateResponse {
+  success: boolean;
+  message?: string;
+  attendanceId?: number;
+  cadetName?: string;
 }

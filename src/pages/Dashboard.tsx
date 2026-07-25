@@ -1,81 +1,151 @@
 import { useEffect, useState } from 'react';
-import { fetchAttendance, fetchCadets, fetchReport } from '../api';
+import { AlertCircle, LoaderCircle } from 'lucide-react';
+import { useAuth } from '../AuthContext';
+import { fetchAttendance, fetchAttendanceReport } from '../attendanceService';
+import { fetchCadets } from '../cadetService';
+import type { ApiCadet, Attendance, AttendanceReport } from '../types';
 
 export default function Dashboard() {
-  const [stats, setStats] = useState({ cadetCount: 0, presentToday: 0, pendingReview: 0, exportReady: 0 });
+  const { session } = useAuth();
+  const [records, setRecords] = useState<Attendance[]>([]);
+  const [cadets, setCadets] = useState<ApiCadet[]>([]);
+  const [report, setReport] = useState<AttendanceReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const loadStats = async () => {
-      try {
-        const [cadets, attendance, report] = await Promise.all([fetchCadets(), fetchAttendance(), fetchReport()]);
-        const today = new Date().toISOString().slice(0, 10);
-        const presentToday = attendance.filter((item) => item.date === today).length;
+    const loadData = async () => {
+      setLoading(true);
+      setError('');
 
-        setStats({
-          cadetCount: cadets.length,
-          presentToday,
-          pendingReview: report.pendingReview,
-          exportReady: report.exportReady,
-        });
-      } catch (error) {
-        console.error(error);
+      try {
+        const [attendanceData, cadetData, reportData] = await Promise.all([
+          fetchAttendance(),
+          fetchCadets(),
+          fetchAttendanceReport(),
+        ]);
+
+        setRecords(attendanceData.slice(0, 5)); // Last 5 records
+        setCadets(cadetData);
+        setReport(reportData);
+      } catch (loadError) {
+        console.error(loadError);
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load dashboard data.');
       } finally {
         setLoading(false);
       }
     };
 
-    loadStats();
+    loadData();
   }, []);
 
-  const cards = [
-    { label: 'Cadets enrolled', value: loading ? '…' : String(stats.cadetCount), detail: 'Active roster', tone: 'text-slate-900' },
-    { label: 'Present today', value: loading ? '…' : String(stats.presentToday), detail: 'Recorded from the API', tone: 'text-emerald-600' },
-    { label: 'Pending review', value: loading ? '…' : String(stats.pendingReview), detail: 'Needs follow-up', tone: 'text-amber-600' },
-    { label: 'Reports ready', value: loading ? '…' : String(stats.exportReady), detail: 'Ready for export', tone: 'text-slate-900' }
-  ];
+  const cadetCount = cadets.length;
+  const todayCount = records.filter((r) => r.date === new Date().toISOString().slice(0, 10)).length;
+  const attendanceRate = cadetCount > 0 ? Math.round((todayCount / cadetCount) * 100) : 0;
+
+  if (!session?.role) {
+    return <div className="text-center py-8">Loading...</div>;
+  }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-[24px] border border-slate-200 bg-gradient-to-r from-[#0F3D2E] to-emerald-800 p-6 text-white shadow-sm">
-        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-200">Daily overview</p>
-        <h1 className="mt-2 text-3xl font-semibold">Command dashboard</h1>
-        <p className="mt-2 max-w-2xl text-sm text-slate-200">A modern, concise view of readiness, attendance, and recent unit activity.</p>
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">Dashboard</h1>
+        <p className="mt-1 text-sm text-slate-500">Welcome back, {session.name}. Role: {session.role}</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        {cards.map((card) => (
-          <div key={card.label} className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{card.label}</p>
-            <p className={`mt-2 text-2xl font-semibold ${card.tone}`}>{card.value}</p>
-            <p className="mt-1 text-sm text-slate-500">{card.detail}</p>
-          </div>
-        ))}
-      </div>
+      {error && (
+        <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle size={14} /> <span>{error}</span>
+        </div>
+      )}
 
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
-        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">Attendance trend</h2>
-              <p className="text-sm text-slate-500">Weekly overview of attendance performance.</p>
+      {/* Stats Cards */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <LoaderCircle className="animate-spin text-slate-400" size={24} />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Cadets enrolled</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{cadetCount}</p>
             </div>
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">Stable</span>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Present today</p>
+              <p className="mt-2 text-2xl font-semibold text-emerald-600">{todayCount}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Attendance rate</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{attendanceRate}%</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Reports ready</p>
+              <p className="mt-2 text-2xl font-semibold text-slate-900">{report?.exportReady ?? 0}</p>
+            </div>
           </div>
-          <div className="flex h-44 items-center justify-center rounded-[20px] border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-400">
-            {loading ? 'Loading attendance data…' : `${stats.presentToday} records marked today`}
-          </div>
-        </div>
 
-        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Quick actions</h2>
-          <div className="mt-4 space-y-3 text-sm text-slate-600">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Review the latest API-backed attendance updates</div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Open cadet profile data from the backend roster</div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">Export the latest generated report</div>
+          {/* Recent Attendance */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Recent attendance</h2>
+            {records.length === 0 ? (
+              <p className="text-sm text-slate-500">No attendance records yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-slate-200 bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-2 font-semibold text-slate-700">Cadet</th>
+                      <th className="px-4 py-2 font-semibold text-slate-700">Date</th>
+                      <th className="px-4 py-2 font-semibold text-slate-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {records.map((record) => (
+                      <tr key={record.id} className="border-b border-slate-100">
+                        <td className="px-4 py-2 font-medium text-slate-900">
+                          {record.cadet?.fullName ?? `Cadet ${record.cadetId}`}
+                        </td>
+                        <td className="px-4 py-2 text-slate-600">{record.date}</td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                              record.status === 'Present'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {record.status || '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        </div>
-      </div>
+
+          {/* Report Summary */}
+          {report && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="text-lg font-semibold text-slate-900 mb-4">Report summary</h2>
+              <div className="space-y-2 text-sm text-slate-700">
+                <p>
+                  <strong>Weekly summary:</strong> {report.weeklySummary}
+                </p>
+                <p>
+                  <strong>Pending review:</strong> {report.pendingReview} records
+                </p>
+                <p>
+                  <strong>Export ready:</strong> {report.exportReady} reports
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

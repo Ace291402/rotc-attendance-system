@@ -1,70 +1,103 @@
-import { Plus, Edit2 } from 'lucide-react';
-import type { Role, Cadet } from '../types';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, LoaderCircle } from 'lucide-react';
+import { fetchCadets } from '../cadetService';
+import type { ApiCadet } from '../types';
 
-interface CadetsProps {
-  role: Role;
-  cadets: Cadet[];
-}
+export default function Cadets() {
+  const [cadets, setCadets] = useState<ApiCadet[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
 
-export default function Cadets({ role, cadets }: CadetsProps) {
-  const showCadets = cadets.length > 0;
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      setError('');
 
-  const handleAction = () => {
-    if (role !== 'admin') {
-      alert('Security Clearance Alert: Operations restricted to Administrative parameters only.');
-      return;
+      try {
+        const data = await fetchCadets();
+        setCadets(data);
+      } catch (loadError) {
+        console.error(loadError);
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load cadets.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  const filteredCadets = useMemo(() => {
+    if (!search.trim()) {
+      return cadets;
     }
-    alert('Cadet configuration dialog modal interface generated successfully.');
-  };
+
+    const lower = search.toLowerCase();
+    return cadets.filter((cadet) => {
+      return (
+        cadet.fullName?.toLowerCase().includes(lower) ||
+        cadet.studentNumber?.toLowerCase().includes(lower) ||
+        cadet.course?.toLowerCase().includes(lower)
+      );
+    });
+  }, [cadets, search]);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Cadet directory</h1>
-          <p className="text-sm text-slate-500">Manage cadet profiles and attendance performance.</p>
-        </div>
-        <button type="button" onClick={handleAction} className="flex items-center justify-center gap-2 rounded-xl bg-[#0F3D2E] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0b2f24]">
-          <Plus size={15} /> Add cadet
-        </button>
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">Cadet roster</h1>
+        <p className="mt-1 text-sm text-slate-500">View all enrolled cadets.</p>
       </div>
 
-      {showCadets ? (
-        <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+      {error && (
+        <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle size={14} /> <span>{error}</span>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <input
+          type="text"
+          placeholder="Search by name, student number, or course…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm placeholder-slate-400 focus:border-emerald-500 focus:outline-none"
+        />
+      </div>
+
+      {/* Cadet List */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <LoaderCircle className="animate-spin text-slate-400" size={24} />
+        </div>
+      ) : filteredCadets.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-500">
+          {cadets.length === 0 ? 'No cadets enrolled yet.' : 'No results match your search.'}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
-                <th className="p-4">Name</th>
-                <th className="p-4">Serial</th>
-                <th className="p-4">Platoon</th>
-                <th className="p-4">Company</th>
-                <th className="p-4 text-center">Attendance</th>
-                <th className="p-4 text-right">Edit</th>
+            <thead className="border-b border-slate-200 bg-slate-50">
+              <tr>
+                <th className="px-4 py-3 font-semibold text-slate-700">Full Name</th>
+                <th className="px-4 py-3 font-semibold text-slate-700">Student Number</th>
+                <th className="px-4 py-3 font-semibold text-slate-700">Course</th>
+                <th className="px-4 py-3 font-semibold text-slate-700">Year Level</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {cadets.map(c => (
-                <tr key={c.id} className="hover:bg-slate-50/60">
-                  <td className="p-4 font-medium text-slate-900">{c.name}</td>
-                  <td className="p-4 font-mono text-slate-600">{c.serialNumber}</td>
-                  <td className="p-4 text-slate-500">{c.platoon}</td>
-                  <td className="p-4 font-medium text-slate-700">{c.company}</td>
-                  <td className="p-4 text-center">
-                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">{c.attendanceRate}%</span>
-                  </td>
-                  <td className="p-4 text-right">
-                    <button type="button" onClick={handleAction} className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
-                      <Edit2 size={13} />
-                    </button>
-                  </td>
+            <tbody>
+              {filteredCadets.map((cadet) => (
+                <tr key={cadet.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="px-4 py-3 font-medium text-slate-900">{cadet.fullName}</td>
+                  <td className="px-4 py-3 text-slate-600">{cadet.studentNumber}</td>
+                  <td className="px-4 py-3 text-slate-600">{cadet.course}</td>
+                  <td className="px-4 py-3 text-slate-600">{cadet.yearLevel}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      ) : (
-        <div className="rounded-[24px] border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
-          No cadet records are loaded yet. Please log in with the backend to populate the roster.
         </div>
       )}
     </div>

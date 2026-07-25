@@ -164,3 +164,4 @@ C:\Users\Michael Angelo\rotc-attendance-system\RotcAttendance.Api\obj\Debug\net9
 C:\Users\Michael Angelo\rotc-attendance-system\RotcAttendance.Api\obj\Debug\net9.0\RotcAttendance.Api.pdb
 C:\Users\Michael Angelo\rotc-attendance-system\RotcAttendance.Api\obj\Debug\net9.0\RotcAttendance.Api.genruntimeconfig.cache
 C:\Users\Michael Angelo\rotc-attendance-system\RotcAttendance.Api\obj\Debug\net9.0\ref\RotcAttendance.Api.dll
+C:\Users\Michael Angelo\rotc-attendance-system\RotcAttendance.Api\bin\Debug\net9.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
