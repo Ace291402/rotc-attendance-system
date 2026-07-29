@@ -22,8 +22,8 @@ interface Session {
 interface AuthContextValue {
   session: Session | null;
   loading: boolean;
-  login: (username: string, password: string, role: Role) => Promise<boolean>;
-  register: (username: string, password: string, role: Role) => Promise<boolean>;
+  login: (username: string, password: string, role: Role) => Promise<{ success: boolean; message?: string }>;
+  register: (username: string, password: string, role: Role) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
 }
 
@@ -77,10 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const auth = await loginUser(username, password, role);
       if (auth?.token && auth.user) {
-
-        setAuthToken(auth.token);
         const internalRole = mapApiRoleToInternal(auth.user.role);
-        
         const nextSession: Session = {
           username: auth.user.username,
           role: internalRole,
@@ -89,16 +86,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           cadetId: auth.cadet?.id ?? undefined,
         };
 
+        setAuthToken(auth.token);
         setStoredAuthSession(nextSession);
         setSession(nextSession);
         navigate(internalRole === 'cadet' ? '/my-attendance' : '/dashboard', { replace: true });
-
-        return true;
+        return { success: true };
       }
-      return false;
+
+      return { success: false, message: 'Login response was not valid.' };
     } catch (err) {
       console.error('Login failed', err);
-      return false;
+      if (err instanceof Error) {
+        return { success: false, message: err.message };
+      }
+      return { success: false, message: 'Unable to authenticate.' };
     } finally {
       setLoading(false);
     }
@@ -108,10 +109,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const result = await registerUser(username, password, role);
-      return result.success;
+      return { success: result.success === true, message: result.message ?? 'Registration failed. Please try again.' };
     } catch (err) {
       console.error('Register failed', err);
-      return false;
+      return { success: false, message: err instanceof Error ? err.message : 'Registration failed. Please try again.' };
     } finally {
       setLoading(false);
     }

@@ -24,7 +24,7 @@ export class ApiError extends Error {
 	}
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_URL || '';
+const apiBaseUrl = (import.meta.env.VITE_API_URL || 'https://localhost:7055').replace(/\/$/, '');
 
 export const api = axios.create({
 	baseURL: apiBaseUrl,

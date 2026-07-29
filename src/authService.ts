@@ -2,30 +2,33 @@ import { api, clearAuthStorage, setAuthToken } from './api';
 import type { AuthResponse, Role } from './types';
 
 function mapFrontendRoleToApiRole(role: Role): string {
-  if (role === 'officer') return 'ROTCOfficer';
-  if (role === 'admin') return 'Admin';
-  return 'Cadet';
+  if (role === 'officer') return 'officer';
+  if (role === 'admin') return 'admin';
+  return 'cadet';
 }
 
 export async function loginUser(username: string, password: string, role: Role): Promise<AuthResponse> {
-  const response = await api.post<AuthResponse>('/api/Authentication/login', {
+  const response = await api.post<AuthResponse>('/api/authentication/login', {
     username,
     password,
     role: mapFrontendRoleToApiRole(role),
   });
 
-  setAuthToken(response.data.token);
+  if (response.data?.token) {
+    setAuthToken(response.data.token);
+  }
+
   return response.data;
 }
 
 export async function registerUser(username: string, password: string, role: Role) {
-  const response = await api.post('/api/Authentication/register', {
+  const response = await api.post('/api/authentication/register', {
     username,
     password,
     role: mapFrontendRoleToApiRole(role),
   });
 
-  return response.data as { success: boolean; message: string };
+  return response.data as { success?: boolean; message?: string; cadet?: unknown };
 }
 
 export async function logoutUser(): Promise<void> {
