@@ -1,19 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, LoaderCircle } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { useAuth } from '../AuthContext';
 import { fetchAttendancePercentage, fetchAttendanceSummary } from '../attendanceService';
 import { getCadetProfile } from '../cadetService';
-import type { Attendance, AttendanceSummary, ApiCadet } from '../types';
-
-type CadetProfilePayload = {
-  cadet?: ApiCadet | null;
-  attendanceHistory?: Attendance[];
-};
+import type { Attendance, AttendanceSummary, CadetProfileResponse } from '../types';
 
 export default function Profile() {
   const { session } = useAuth();
-  const [profile, setProfile] = useState<CadetProfilePayload | null>(null);
+  const [profile, setProfile] = useState<CadetProfileResponse | null>(null);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
   const [globalSummary, setGlobalSummary] = useState<AttendanceSummary | null>(null);
@@ -34,18 +29,13 @@ export default function Profile() {
 
     try {
       const profileData = await getCadetProfile(session.userId);
-      // backend returns { cadet: { ... }, attendanceHistory: [] }
-      setProfile(profileData as CadetProfilePayload);
+      setProfile(profileData);
+      setAttendance(Array.isArray(profileData.attendanceHistory) ? profileData.attendanceHistory : []);
 
       const summaryData = await fetchAttendanceSummary();
       setGlobalSummary(summaryData);
 
-      const cadetId = (profileData as any)?.cadet?.id ?? (profileData as any)?.id;
-
-      // Prefer attendanceHistory returned from profile API when available
-      const history = (profileData as any)?.attendanceHistory ?? [];
-      setAttendance(Array.isArray(history) ? history : []);
-
+      const cadetId = profileData.cadet?.id ?? session?.cadetId ?? session.userId;
       if (cadetId) {
         const percentageData = await fetchAttendancePercentage(cadetId);
         setAttendanceSummary(percentageData);
@@ -56,7 +46,7 @@ export default function Profile() {
     } finally {
       setLoading(false);
     }
-  }, [session?.userId]);
+  }, [session?.userId, session?.cadetId]);
 
   useEffect(() => {
     void loadData();
@@ -75,6 +65,11 @@ export default function Profile() {
     attendanceSummary?.attendancePercentage ??
     attendanceSummary?.percentage ??
     (attendance.length > 0 ? Math.round((attendance.filter((r) => r.status === 'Present').length / attendance.length) * 100) : 0);
+
+  const sortedAttendance = useMemo(
+    () => [...attendance].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [attendance],
+  );
 
   const downloadQr = () => {
     const qrId = profile?.cadet?.qrCodeId ?? null;
@@ -220,7 +215,7 @@ export default function Profile() {
                     </tr>
                   </thead>
                   <tbody>
-                    {attendance.map((record) => {
+                    {sortedAttendance.map((record) => {
                       const fmt = formatDate(record.date);
                       return (
                         <tr key={record.id} className="border-b border-slate-100">

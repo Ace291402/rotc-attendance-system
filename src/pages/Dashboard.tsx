@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, LoaderCircle } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { fetchAttendance, fetchAttendanceReport, fetchAttendanceSummary } from '../attendanceService';
@@ -8,11 +8,29 @@ import type { ApiCadet, Attendance, AttendanceReport, AttendanceSummary } from '
 export default function Dashboard() {
   const { session } = useAuth();
   const [records, setRecords] = useState<Attendance[]>([]);
+  const [allRecords, setAllRecords] = useState<Attendance[]>([]);
   const [cadets, setCadets] = useState<ApiCadet[]>([]);
   const [report, setReport] = useState<AttendanceReport | null>(null);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const formatDateTime = (iso?: string) => {
+    if (!iso) return { dateStr: '', timeStr: '' };
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return { dateStr: iso, timeStr: '' };
+    }
+    return {
+      dateStr: new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date),
+      timeStr: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(date),
+    };
+  };
+
+  const sortedRecords = useMemo(
+    () => [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [records],
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -26,7 +44,8 @@ export default function Dashboard() {
         fetchAttendanceSummary(),
       ]);
 
-      setRecords(attendanceData.slice(0, 5));
+      setAllRecords(attendanceData ?? []);
+      setRecords((attendanceData ?? []).slice(0, 5));
       setCadets(cadetData);
       setReport(reportData);
       setSummary(summaryData);
@@ -50,12 +69,27 @@ export default function Dashboard() {
   }, [loadData]);
 
   const totalCadets = summary?.totalCadets ?? cadets.length;
-  const presentToday = summary?.presentToday ?? 0;
-  const absentToday = summary?.absentToday ?? 0;
-  const lateToday = summary?.lateToday ?? 0;
+  const totalAttendance = summary?.totalAttendance ?? allRecords.length;
+
+  const today = new Date();
+  const isSameLocalDate = (iso?: string) => {
+    if (!iso) return false;
+    const date = new Date(iso);
+    return (
+      date.getFullYear() === today.getFullYear() &&
+      date.getMonth() === today.getMonth() &&
+      date.getDate() === today.getDate()
+    );
+  };
+
+  const presentToday = summary?.presentToday ?? allRecords.filter((record) => record.status === 'Present' && isSameLocalDate(record.date)).length;
+  const absentToday = summary?.absentToday ?? allRecords.filter((record) => record.status === 'Absent' && isSameLocalDate(record.date)).length;
+  const lateToday = summary?.lateToday ?? allRecords.filter((record) => record.status === 'Late' && isSameLocalDate(record.date)).length;
+  const totalPresent = allRecords.filter((record) => record.status === 'Present').length;
+  const attendanceRate =
+    summary?.attendancePercentage ??
+    (totalAttendance > 0 ? parseFloat(((totalPresent / totalAttendance) * 100).toFixed(1)) : 0);
   const attendanceToday = presentToday;
-  const totalAttendance = summary?.totalAttendance ?? records.length;
-  const attendanceRate = summary?.attendancePercentage ?? (totalCadets > 0 ? Math.round((presentToday / totalCadets) * 100) : 0);
 
   if (!session?.role) {
     return <div className="text-center py-8">Loading...</div>;
@@ -139,12 +173,22 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {records.map((record) => (
+                    {sortedRecords.map((record) => (
                       <tr key={record.id} className="border-b border-slate-100">
                         <td className="px-4 py-2 font-medium text-slate-900">
                           {record.cadet?.fullName ?? `Cadet ${record.cadetId}`}
                         </td>
-                        <td className="px-4 py-2 text-slate-600">{record.date}</td>
+                        <td className="px-4 py-2 text-slate-600">
+                          {(() => {
+                            const fmt = formatDateTime(record.date);
+                            return (
+                              <>
+                                <div>{fmt.dateStr}</div>
+                                <div className="text-xs text-slate-500">{fmt.timeStr}</div>
+                              </>
+                            );
+                          })()}
+                        </td>
                         <td className="px-4 py-2">
                           <span className={`rounded-full px-2 py-1 text-xs font-semibold ${record.status === 'Present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                             {record.status || '—'}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Download, LoaderCircle } from 'lucide-react';
 import { fetchAttendanceReport, fetchAttendance } from '../attendanceService';
 import type { AttendanceReport, Attendance } from '../types';
@@ -9,6 +9,23 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+
+  const formatDateTime = (iso?: string) => {
+    if (!iso) return { dateStr: '', timeStr: '' };
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return { dateStr: iso, timeStr: '' };
+    }
+    return {
+      dateStr: new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date),
+      timeStr: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(date),
+    };
+  };
+
+  const sortedRecords = useMemo(
+    () => [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [records],
+  );
 
   useEffect(() => {
     const loadData = async () => {
@@ -126,12 +143,22 @@ export default function Reports() {
                     </tr>
                   </thead>
                   <tbody>
-                    {records.map((record) => (
+                    {sortedRecords.map((record) => (
                       <tr key={record.id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="px-4 py-2 font-medium text-slate-900">
                           {record.cadet?.fullName ?? `Cadet ${record.cadetId}`}
                         </td>
-                        <td className="px-4 py-2 text-slate-600">{record.date}</td>
+                        <td className="px-4 py-2 text-slate-600">
+                          {(() => {
+                            const fmt = formatDateTime(record.date);
+                            return (
+                              <>
+                                <div>{fmt.dateStr}</div>
+                                <div className="text-xs text-slate-500">{fmt.timeStr}</div>
+                              </>
+                            );
+                          })()}
+                        </td>
                         <td className="px-4 py-2">
                           <span
                             className={`rounded-full px-2 py-1 text-xs font-semibold ${

@@ -56,6 +56,28 @@ export default function Attendance() {
   const [cadetPercentage, setCadetPercentage] = useState<number | null>(null);
   const [reportSummary, setReportSummary] = useState('');
 
+  const formatDateTime = (iso?: string) => {
+    if (!iso) return { dateStr: '', timeStr: '' };
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+      return { dateStr: iso, timeStr: '' };
+    }
+    return {
+      dateStr: new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date),
+      timeStr: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(date),
+    };
+  };
+
+  const sortedRecords = useMemo(
+    () => [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [records],
+  );
+
+  const sortedCadetHistory = useMemo(
+    () => [...cadetHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [cadetHistory],
+  );
+
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
 
@@ -97,16 +119,33 @@ export default function Attendance() {
       try {
         const trimmed = query.trim();
         const params: { cadetId?: number; date?: string; status?: string } = {};
+        const normalized = trimmed.toLowerCase();
         if (/^\d+$/.test(trimmed)) {
           params.cadetId = Number(trimmed);
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
           params.date = trimmed;
-        } else {
+        } else if (['present', 'absent', 'late'].includes(normalized)) {
           params.status = trimmed;
         }
 
-        const results = await searchAttendance(params);
-        setRecords(results ?? []);
+        if (Object.keys(params).length > 0) {
+          const results = await searchAttendance(params);
+          setRecords(results ?? []);
+        } else {
+          const attendanceData = await fetchAttendance();
+          const filtered = attendanceData.filter((record) => {
+            const cadet = record.cadet;
+            return [
+              cadet?.fullName,
+              cadet?.studentNumber,
+              cadet?.course,
+              cadet?.yearLevel,
+            ]
+              .filter(Boolean)
+              .some((value) => String(value).toLowerCase().includes(normalized));
+          });
+          setRecords(filtered);
+        }
       } catch (searchError) {
         console.error(searchError);
         setError(searchError instanceof Error ? searchError.message : 'Unable to search attendance.');
@@ -395,16 +434,33 @@ export default function Attendance() {
     setError('');
     try {
       const trimmed = search.trim();
+      const normalized = trimmed.toLowerCase();
       const params: { cadetId?: number; date?: string; status?: string } = {};
       if (/^\d+$/.test(trimmed)) {
         params.cadetId = Number(trimmed);
       } else if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-        params.date = new Date(trimmed).toISOString();
-      } else {
+        params.date = trimmed;
+      } else if (['present', 'absent', 'late'].includes(normalized)) {
         params.status = trimmed;
       }
-      const results = await searchAttendance(params);
-      setRecords(results);
+      if (Object.keys(params).length > 0) {
+        const results = await searchAttendance(params);
+        setRecords(results);
+      } else {
+        const attendanceData = await fetchAttendance();
+        const filtered = attendanceData.filter((record) => {
+          const cadet = record.cadet;
+          return [
+            cadet?.fullName,
+            cadet?.studentNumber,
+            cadet?.course,
+            cadet?.yearLevel,
+          ]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(normalized));
+        });
+        setRecords(filtered);
+      }
     } catch (searchError) {
       console.error(searchError);
       setError(searchError instanceof Error ? searchError.message : 'Unable to search attendance.');
@@ -414,6 +470,11 @@ export default function Attendance() {
   };
 
   const handleApplyFilter = async () => {
+    if (!startDateFilter && !endDateFilter && !statusFilter) {
+      await loadData();
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -469,7 +530,7 @@ export default function Attendance() {
     }
   };
 
-  const filteredRecords = useMemo(() => records, [records]);
+  const filteredRecords = sortedRecords;
 
   if (!session?.role || !['admin', 'officer'].includes(session.role)) {
     return (
@@ -642,7 +703,17 @@ export default function Attendance() {
                     <p className="font-medium text-slate-900">{record.cadet?.fullName ?? `Cadet ${record.cadetId}`}</p>
                     <p className="text-xs text-slate-500">{record.cadet?.course ?? '—'}</p>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{record.date}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {(() => {
+                      const fmt = formatDateTime(record.date);
+                      return (
+                        <>
+                          <div>{fmt.dateStr}</div>
+                          <div className="text-xs text-slate-500">{fmt.timeStr}</div>
+                        </>
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${record.status === 'Present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                       {record.status || '—'}
@@ -699,12 +770,18 @@ export default function Attendance() {
                 </tr>
               </thead>
               <tbody>
-                {cadetHistory.map((item) => (
-                  <tr key={item.id} className="border-b border-slate-100">
-                    <td className="px-3 py-2">{item.date}</td>
-                    <td className="px-3 py-2">{item.status ?? '—'}</td>
-                  </tr>
-                ))}
+                {sortedCadetHistory.map((item) => {
+                  const fmt = formatDateTime(item.date);
+                  return (
+                    <tr key={item.id} className="border-b border-slate-100">
+                      <td className="px-3 py-2">
+                        <div>{fmt.dateStr}</div>
+                        <div className="text-xs text-slate-500">{fmt.timeStr}</div>
+                      </td>
+                      <td className="px-3 py-2">{item.status ?? '—'}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

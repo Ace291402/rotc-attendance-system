@@ -76,7 +76,8 @@ export default function Cadets() {
         !searchLower ||
         cadet.fullName?.toLowerCase().includes(searchLower) ||
         cadet.studentNumber?.toLowerCase().includes(searchLower) ||
-        cadet.course?.toLowerCase().includes(searchLower);
+        cadet.course?.toLowerCase().includes(searchLower) ||
+        cadet.yearLevel?.toLowerCase().includes(searchLower);
       const matchesCourse = !courseFilter || cadet.course === courseFilter;
       const matchesYear = !yearFilter || cadet.yearLevel === yearFilter;
       return Boolean(matchesSearch && matchesCourse && matchesYear);

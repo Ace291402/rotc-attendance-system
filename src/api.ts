@@ -102,9 +102,14 @@ export function clearAuthStorage() {
   clearStoredAuthSession();
 }
 
+const AUTH_ENDPOINTS = ['/api/Authentication/login', '/api/Authentication/register', '/api/Authentication/logout'];
+
 api.interceptors.request.use((config) => {
   const token = getAuthToken();
-  if (token) {
+  const requestUrl = String(config.url || '');
+  const isAuthEndpoint = AUTH_ENDPOINTS.some((endpoint) => requestUrl.includes(endpoint));
+
+  if (token && !isAuthEndpoint) {
     if (config.headers instanceof AxiosHeaders) {
       config.headers.set('Authorization', `Bearer ${token}`);
     } else {
@@ -148,3 +153,7 @@ api.interceptors.response.use(
     return Promise.reject(new ApiError(message, status, data));
   },
 );
+
+
+
+

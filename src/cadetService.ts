@@ -43,9 +43,9 @@ export async function getCadetProfile(id: number | string): Promise<CadetProfile
 export async function getCadetQr(id: number | string): Promise<{ cadetId: number; fullName: string; qrCodeId: string | null; qrCodeImageBase64?: string | null }> {
   const profile = await getCadetProfile(id);
   return {
-    cadetId: profile.id,
-    fullName: profile.fullName || '',
-    qrCodeId: profile.qrCodeId ?? null,
-    qrCodeImageBase64: profile.qrCodeImageBase64 ?? null,
+    cadetId: profile.cadet?.id ?? 0,
+    fullName: profile.cadet?.fullName ?? '',
+    qrCodeId: profile.cadet?.qrCodeId ?? null,
+    qrCodeImageBase64: profile.cadet?.qrCodeImageBase64 ?? null,
   };
 }

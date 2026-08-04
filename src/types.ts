@@ -20,15 +20,8 @@ export interface ApiCadet {
 }
 
 export interface CadetProfileResponse {
-  id: number;
-  userId?: number;
-  studentNumber?: string | null;
-  fullName?: string | null;
-  course?: string | null;
-  yearLevel?: string | null;
-  email?: string | null;
-  qrCodeId?: string | null;
-  qrCodeImageBase64?: string | null;
+  cadet: ApiCadet;
+  attendanceHistory: Attendance[];
 }
 
 export interface Cadet {
