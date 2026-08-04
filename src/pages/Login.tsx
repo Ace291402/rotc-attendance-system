@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import { Shield, AlertCircle, CheckCircle2 } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import { useAuth } from '../AuthContext';
 
 export default function Login() {
   // Using Auth context
-  const { login: onLogin, register: onRegister } = useAuth();
+  const { login: onLogin, register: onRegister, loading } = useAuth();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'officer' | 'cadet'>('officer');
+  const [studentNumber, setStudentNumber] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [course, setCourse] = useState('');
+  const [yearLevel, setYearLevel] = useState('');
+  const [registeredQrCodeId, setRegisteredQrCodeId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -16,6 +22,7 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setRegisteredQrCodeId(null);
 
     if (!email || !password) {
       setError('Required fields are missing.');
@@ -23,19 +30,38 @@ export default function Login() {
     }
 
     if (isRegistering) {
-      const isSuccess = await onRegister(email, password, role);
-      
-      if (isSuccess) {
-        setSuccess(`Account registered successfully. Please log in.`);
+      const cadetFields =
+        role === 'cadet'
+          ? {
+              studentNumber,
+              fullName,
+              course,
+              yearLevel,
+            }
+          : undefined;
+
+      if (role === 'cadet') {
+        if (!studentNumber || !fullName || !course || !yearLevel) {
+          setError('All cadet registration fields are required.');
+          return;
+        }
+      }
+
+      const result = await onRegister(email, password, role, cadetFields);
+      if (result.success) {
+        setSuccess(result.message ?? 'Account registered successfully. Please log in.');
+        if (role === 'cadet' && result.qrCodeId) {
+          setRegisteredQrCodeId(result.qrCodeId);
+        }
         setIsRegistering(false);
         setPassword('');
       } else {
-        setError('Registration failed. Please try again.');
+        setError(result.message ?? 'Registration failed. Please try again.');
       }
     } else {
-      const isSuccess = await onLogin(email, password, role);
-      if (!isSuccess) {
-        setError('Unable to authenticate. Check your email and password.');
+      const result = await onLogin(email, password, role);
+      if (!result.success) {
+        setError(result.message ?? 'Unable to authenticate. Check your email and password.');
       }
     }
   };
@@ -91,22 +117,107 @@ export default function Login() {
             </div>
           )}
 
+          {registeredQrCodeId && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase text-slate-500 mb-2">Registration successful</p>
+              <div className="space-y-2 text-sm text-slate-700">
+                <p>
+                  <span className="font-semibold">Student Number:</span> {studentNumber}
+                </p>
+                <p>
+                  <span className="font-semibold">Full Name:</span> {fullName}
+                </p>
+                <p>
+                  <span className="font-semibold">Course:</span> {course}
+                </p>
+                <p>
+                  <span className="font-semibold">Year Level:</span> {yearLevel}
+                </p>
+              </div>
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase text-slate-500 mb-2">Generated QR Code</p>
+                <div className="flex justify-center p-3">
+                  <QRCode value={registeredQrCodeId} size={150} />
+                </div>
+                <p className="mt-3 text-xs text-slate-500 break-words">{registeredQrCodeId}</p>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Email address</label>
-              <input type="email" placeholder="officer@rotc.edu" value={email} onChange={(e) => setEmail(e.target.value)}
+              <label className="block text-xs font-medium text-slate-700 mb-1">Username</label>
+              <input type="text" placeholder="newcadet" value={email} onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900" />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Role</label>
-              <select value={role} onChange={(e) => setRole(e.target.value as 'admin' | 'officer' | 'cadet')}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900">
+              <select
+                value={role}
+                onChange={(e) => {
+                  setRole(e.target.value as 'admin' | 'officer' | 'cadet');
+                  setRegisteredQrCodeId(null);
+                  setStudentNumber('');
+                  setFullName('');
+                  setCourse('');
+                  setYearLevel('');
+                }}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900"
+              >
                 <option value="cadet">Cadet</option>
-                <option value="officer">Officer</option>
+                <option value="officer">ROTC Officer</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
+
+            {isRegistering && role === 'cadet' && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Cadet Number</label>
+                  <input
+                    type="text"
+                    placeholder="2026-1001"
+                    value={studentNumber}
+                    onChange={(e) => setStudentNumber(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    placeholder="Juan Dela Cruz"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Course</label>
+                  <input
+                    type="text"
+                    placeholder="BSIT"
+                    value={course}
+                    onChange={(e) => setCourse(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">Year Level</label>
+                  <input
+                    type="text"
+                    placeholder="2nd Year"
+                    value={yearLevel}
+                    onChange={(e) => setYearLevel(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900"
+                  />
+                </div>
+              </>
+            )}
 
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Password</label>
@@ -114,13 +225,26 @@ export default function Login() {
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900" />
             </div>
 
-            <button type="submit" className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold tracking-wide transition-all shadow-md active:scale-[0.99] cursor-pointer mt-2">
-              {isRegistering ? 'Create account' : 'Continue →'}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold tracking-wide transition-all shadow-md active:scale-[0.99] cursor-pointer mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isRegistering ? (loading ? 'Registering...' : 'Create account') : loading ? 'Signing in...' : 'Continue →'}
             </button>
           </form>
 
           <div className="text-center pt-2 border-t border-slate-100">
-            <button type="button" onClick={() => { setIsRegistering(!isRegistering); setError(''); setSuccess(''); }} className="text-xs text-slate-500 hover:text-slate-900 cursor-pointer">
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegistering(!isRegistering);
+                setError('');
+                setSuccess('');
+                setRegisteredQrCodeId(null);
+              }}
+              className="text-xs text-slate-500 hover:text-slate-900 cursor-pointer"
+            >
               {isRegistering ? (
                 <>Already have an account? <span className="font-bold text-slate-800 underline">Log in</span></>
               ) : (

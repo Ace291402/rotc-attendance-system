@@ -1,5 +1,5 @@
-import { api } from './api';
-import type { Attendance, AttendanceReport } from './types';
+﻿import { api } from './api';
+import type { Attendance, AttendanceReport, AttendanceSummary } from './types';
 
 export interface AttendancePayload {
   cadetId: number;
@@ -14,6 +14,37 @@ export async function fetchAttendance(): Promise<Attendance[]> {
   }
 
   return Array.isArray(response.data) ? response.data : [];
+}
+
+export async function searchAttendance(params: { cadetId?: number; date?: string; status?: string }): Promise<Attendance[]> {
+  const query = new URLSearchParams();
+  if (params.cadetId !== undefined) query.set('cadetId', String(params.cadetId));
+  if (params.date) query.set('date', params.date);
+  if (params.status) query.set('status', params.status);
+
+  const response = await api.get<Attendance[]>(`/api/Attendance/search?${query.toString()}`);
+  if (response.status === 204) {
+    return [];
+  }
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+export async function fetchAttendanceHistory(cadetId: number): Promise<Attendance[]> {
+  const response = await api.get<Attendance[]>(`/api/Attendance/history/${cadetId}`);
+  if (response.status === 204) {
+    return [];
+  }
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+export async function fetchAttendancePercentage(cadetId: number): Promise<AttendanceSummary> {
+  const response = await api.get<AttendanceSummary>(`/api/Attendance/percentage/${cadetId}`);
+  return response.data;
+}
+
+export async function fetchAttendanceSummary(): Promise<AttendanceSummary> {
+  const response = await api.get<AttendanceSummary>('/api/Attendance/summary');
+  return response.data;
 }
 
 export async function createAttendance(cadetId: number, officerName?: string): Promise<{ success: boolean; message: string; attendanceId?: number; cadetName?: string }> {
@@ -41,9 +72,9 @@ export async function fetchAttendanceReport(): Promise<AttendanceReport> {
   return response.data;
 }
 
-export async function scanAttendance(qrCodeValue: string, officerName?: string): Promise<{ success: boolean; message: string; cadetName?: string }> {
+export async function scanAttendance(qrCodeId: string, officerName?: string): Promise<{ success: boolean; message: string; cadetName?: string }> {
   const response = await api.post('/api/Attendance/scan', {
-    qrCodeId: qrCodeValue,
+    qrCodeId,
     officerName: officerName || 'Officer',
   });
 

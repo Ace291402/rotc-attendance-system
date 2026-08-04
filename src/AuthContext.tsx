@@ -23,7 +23,12 @@ interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   login: (username: string, password: string, role: Role) => Promise<{ success: boolean; message?: string }>;
-  register: (username: string, password: string, role: Role) => Promise<{ success: boolean; message?: string }>;
+  register: (
+    username: string,
+    password: string,
+    role: Role,
+    cadetFields?: { studentNumber: string; fullName: string; course: string; yearLevel: string },
+  ) => Promise<{ success: boolean; message?: string; qrCodeId?: string }>;
   logout: () => void;
 }
 
@@ -105,18 +110,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (username: string, password: string, role: Role) => {
-    setLoading(true);
-    try {
-      const result = await registerUser(username, password, role);
-      return { success: result.success === true, message: result.message ?? 'Registration failed. Please try again.' };
-    } catch (err) {
-      console.error('Register failed', err);
-      return { success: false, message: err instanceof Error ? err.message : 'Registration failed. Please try again.' };
-    } finally {
-      setLoading(false);
-    }
-  };
+  const register = async (
+  username: string,
+  password: string,
+  role: Role,
+  cadetFields?: { studentNumber: string; fullName: string; course: string; yearLevel: string },
+) => {
+  setLoading(true);
+
+  try {
+    const result = await registerUser(username, password, role, cadetFields);
+
+    return {
+      success: true,
+      message: 'Registration successful.',
+      qrCodeId: result.qrCodeId ?? result.cadet?.qrCodeId,
+    };
+
+  } catch (err) {
+    console.error('Register failed', err);
+
+    return {
+      success: false,
+      message: err instanceof Error 
+        ? err.message 
+        : 'Registration failed. Please try again.'
+    };
+
+  } finally {
+    setLoading(false);
+  }
+};
 
   const logout = () => {
     try {

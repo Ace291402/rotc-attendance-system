@@ -31,11 +31,8 @@ try {
     }
     if ($cadets -and $cadets.Count -gt 0) { $cid = $cadets[0].id } else { $cid = 0; Write-Host 'No cadet id available, using 0' }
 
-    # Generate QR
-    try { $gen = Invoke-RestMethod -Uri "$base/api/Cadets/cadets/$cid/qr" -Method Post -Headers $headers -ErrorAction Stop; Write-Host 'GENERATE_QR OK' } catch { Write-Host 'GENERATE_QR ERROR:' $_.Exception.Message }
-
-    # Get QR
-    try { $getqr = Invoke-RestMethod -Uri "$base/api/Cadets/cadets/$cid/qr" -Method Get -Headers $headers -ErrorAction Stop; Write-Host "GET_QR present: $([bool]$getqr.qrCodeValue)" } catch { Write-Host 'GET_QR ERROR:' $_.Exception.Message }
+    # Get profile (profile should include qrCodeValue)
+    try { $getqr = Invoke-RestMethod -Uri "$base/api/Cadets/profile/$cid" -Method Get -Headers $headers -ErrorAction Stop; Write-Host "GET_PROFILE present: $([bool]$getqr.qrCodeValue)" } catch { Write-Host 'GET_PROFILE ERROR:' $_.Exception.Message }
 
     # Attendance list
     try { $attList = Invoke-RestMethod -Uri "$base/api/Attendance/attendance" -Method Get -Headers $headers -ErrorAction Stop; Write-Host ("ATT COUNT: " + ($attList | Measure-Object).Count) } catch { Write-Host 'ATT LIST ERROR:' $_.Exception.Message }

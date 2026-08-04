@@ -14,7 +14,7 @@ export interface ApiCadet {
   fullName: string | null;
   course: string | null;
   yearLevel: string | null;
-  qrCodeValue?: string | null;
+  qrCodeId?: string | null;
   qrCodeImageBase64?: string | null;
 }
 
@@ -26,7 +26,7 @@ export interface CadetProfileResponse {
   course?: string | null;
   yearLevel?: string | null;
   email?: string | null;
-  qrCodeValue?: string | null;
+  qrCodeId?: string | null;
   qrCodeImageBase64?: string | null;
 }
 
@@ -85,6 +85,7 @@ export interface AttendanceSummary {
   presentToday?: number;
   absentToday?: number;
   lateToday?: number;
+  totalAttendance?: number;
   attendancePercentage?: number;
   attendanceRate?: number;
   percentage?: number;
