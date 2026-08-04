@@ -3,9 +3,10 @@ export type Role = 'admin' | 'officer' | 'cadet';
 export interface AuthUser {
   id: number;
   username: string;
-  role: Role;
+  role: Role | string;
   name?: string;
   platoon?: string;
+  cadetId?: number;
 }
 
 export interface ApiCadet {
@@ -72,6 +73,7 @@ export interface AuthResponse {
   token: string;
   user: AuthUser;
   cadet?: ApiCadet;
+  qrCodeId?: string;
 }
 
 export interface AttendanceReport {
@@ -98,9 +100,31 @@ export interface AttendanceSearchParams {
   status?: string;
 }
 
+export interface AttendanceFilterParams {
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+}
+
 export interface AttendanceCreateResponse {
   success: boolean;
   message?: string;
   attendanceId?: number;
   cadetName?: string;
+}
+
+export interface AttendanceScanResponse {
+  success: boolean;
+  message: string;
+  cadetName?: string;
+}
+
+export interface RegisterResponse {
+  success?: boolean;
+  message?: string;
+  qrCodeId?: string;
+  cadet?: {
+    id?: number;
+    qrCodeId?: string;
+  };
 }

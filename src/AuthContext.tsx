@@ -15,6 +15,7 @@ interface Session {
   username: string;
   role: Role;
   name: string;
+  userId?: number;
   platoon?: string;
   cadetId?: number;
 }
@@ -87,6 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: auth.user.username,
           role: internalRole,
           name: auth.user.name ?? auth.user.username,
+          userId: auth.user.id,
           platoon: auth.user.platoon,
           cadetId: auth.cadet?.id ?? undefined,
         };
@@ -111,46 +113,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const register = async (
-  username: string,
-  password: string,
-  role: Role,
-  cadetFields?: { studentNumber: string; fullName: string; course: string; yearLevel: string },
-) => {
-  setLoading(true);
+    username: string,
+    password: string,
+    role: Role,
+    cadetFields?: { studentNumber: string; fullName: string; course: string; yearLevel: string },
+  ) => {
+    setLoading(true);
 
-  try {
-    const result = await registerUser(username, password, role, cadetFields);
-
-    return {
-      success: true,
-      message: 'Registration successful.',
-      qrCodeId: result.qrCodeId ?? result.cadet?.qrCodeId,
-    };
-
-  } catch (err) {
-    console.error('Register failed', err);
-
-    return {
-      success: false,
-      message: err instanceof Error 
-        ? err.message 
-        : 'Registration failed. Please try again.'
-    };
-
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      const result = await registerUser(username, password, role, cadetFields);
+      return {
+        success: true,
+        message: result.message ?? 'Registration successful.',
+        qrCodeId: result.qrCodeId ?? result.cadet?.qrCodeId,
+      };
+    } catch (err) {
+      console.error('Register failed', err);
+      return {
+        success: false,
+        message: err instanceof Error ? err.message : 'Registration failed. Please try again.',
+      };
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const logout = () => {
-    try {
-      clearAuthStorage();
-      setSession(null);
-      logoutUser().catch(() => {});
-      navigate('/login', { replace: true });
-    } catch (err) {
-      console.error(err);
-    }
+    clearAuthStorage();
+    setSession(null);
+    void logoutUser().catch((err) => {
+      console.error('Logout request failed', err);
+    });
+    navigate('/login', { replace: true });
   };
 
   return (

@@ -1,56 +1,63 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, LoaderCircle, Plus, QrCode, Trash2 } from 'lucide-react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, CheckCircle2, LoaderCircle, Pencil, Plus, QrCode, Trash2 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useAuth } from '../AuthContext';
-import { createAttendance, deleteAttendance, fetchAttendance, scanAttendance, searchAttendance } from '../attendanceService';
+import { ApiError } from '../api';
+import {
+  createAttendance,
+  deleteAttendance,
+  fetchAttendance,
+  fetchAttendanceHistory,
+  fetchAttendancePercentage,
+  fetchAttendanceReport,
+  fetchAttendanceSummary,
+  filterAttendance,
+  scanAttendance,
+  searchAttendance,
+  updateAttendance,
+} from '../attendanceService';
 import { fetchCadets } from '../cadetService';
-import type { ApiCadet, Attendance } from '../types';
+import type { ApiCadet, Attendance, AttendanceSummary } from '../types';
 
 interface AttendanceFormState {
   cadetId: string;
-  officerName: string;
+  date: string;
+  status: string;
 }
 
-const initialForm = (officerName = ''): AttendanceFormState => ({
+const initialForm = (): AttendanceFormState => ({
   cadetId: '',
-  officerName,
+  date: new Date().toISOString().slice(0, 16),
+  status: 'Present',
 });
 
 export default function Attendance() {
   const { session } = useAuth();
   const [records, setRecords] = useState<Attendance[]>([]);
   const [cadets, setCadets] = useState<ApiCadet[]>([]);
+  const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [cameraError, setCameraError] = useState('');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [startDateFilter, setStartDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [scanCode, setScanCode] = useState('');
-  const [form, setForm] = useState<AttendanceFormState>(initialForm(session?.name ?? ''));
-  const [scanner, setScanner] = useState<Html5Qrcode | null>(null);
+  const [form, setForm] = useState<AttendanceFormState>(initialForm());
+  const [editTarget, setEditTarget] = useState<Attendance | null>(null);
+  const [historyCadetId, setHistoryCadetId] = useState('');
+  const [cadetHistory, setCadetHistory] = useState<Attendance[]>([]);
+  const [cadetPercentage, setCadetPercentage] = useState<number | null>(null);
+  const [reportSummary, setReportSummary] = useState('');
 
-  const stopScanner = useCallback(async () => {
-    if (!scanner) {
-      return;
-    }
-
-    try {
-      await scanner.stop();
-    } catch {
-      // ignore stop errors
-    }
-
-    try {
-      await scanner.clear();
-    } catch {
-      // ignore clear errors
-    }
-
-    setScanner(null);
-  }, [scanner]);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const processingRef = useRef(false);
 
   const refreshAfterMutation = () => {
     window.dispatchEvent(new Event('rotc-data-changed'));
@@ -61,9 +68,14 @@ export default function Attendance() {
     setError('');
 
     try {
-      const [attendanceData, cadetData] = await Promise.all([fetchAttendance(), fetchCadets()]);
+      const [attendanceData, cadetData, summaryData] = await Promise.all([
+        fetchAttendance(),
+        fetchCadets(),
+        fetchAttendanceSummary(),
+      ]);
       setRecords(attendanceData ?? []);
       setCadets(cadetData ?? []);
+      setSummary(summaryData);
     } catch (loadError) {
       console.error(loadError);
       setError(loadError instanceof Error ? loadError.message : 'Unable to load attendance records.');
@@ -125,8 +137,24 @@ export default function Attendance() {
   }, [search, searchRecords]);
 
   useEffect(() => {
+    const cleanupScanner = async () => {
+      if (scannerRef.current) {
+        try {
+          if (scannerRef.current.isScanning) {
+            console.log('[Scanner] Stopping scanner...');
+            await scannerRef.current.stop();
+          }
+          console.log('[Scanner] Clearing scanner...');
+          await scannerRef.current.clear();
+        } catch (cleanupError) {
+          console.error('[Scanner] Cleanup error:', cleanupError);
+        }
+        scannerRef.current = null;
+      }
+    };
+
     if (!scanOpen) {
-      void stopScanner();
+      void cleanupScanner();
       return;
     }
 
@@ -135,22 +163,27 @@ export default function Attendance() {
     setMessage('');
 
     const initScanner = async () => {
+      await cleanupScanner();
+
       try {
         const cameras = await Html5Qrcode.getCameras();
         if (!cameras || cameras.length === 0) {
+          console.error('[Scanner] No cameras found');
           setCameraError('No camera found.');
           return;
         }
 
+        console.log('[Scanner] Initializing with camera:', cameras[0].id);
         const html5QrCode = new Html5Qrcode('attendance-qr-scanner');
-        setScanner(html5QrCode);
+        scannerRef.current = html5QrCode;
         const cameraId = cameras[0].id;
 
         await html5QrCode.start(
           { deviceId: { exact: cameraId } },
           { fps: 10, qrbox: 250 },
-          async (decodedText) => {
-            if (saving) {
+          async (decodedText: string) => {
+            if (processingRef.current || saving) {
+              console.log('[Scanner] Scan already processing, ignoring duplicate');
               return;
             }
             await processScannedQr(decodedText);
@@ -159,8 +192,9 @@ export default function Attendance() {
             // scanning progress callback intentionally ignored
           }
         );
+        console.log('[Scanner] Scanner started successfully');
       } catch (scanError) {
-        console.error(scanError);
+        console.error('[Scanner] Initialization error:', scanError);
         setCameraError(scanError instanceof Error ? scanError.message : 'Unable to start the camera.');
       }
     };
@@ -168,12 +202,12 @@ export default function Attendance() {
     void initScanner();
 
     return () => {
-      void stopScanner();
+      void cleanupScanner();
     };
-  }, [scanOpen, saving, stopScanner]);
+  }, [scanOpen, saving]);
 
   const resetForm = () => {
-    setForm(initialForm(session?.name ?? ''));
+    setForm(initialForm());
   };
 
   const openCreateForm = () => {
@@ -206,14 +240,56 @@ export default function Attendance() {
     setMessage('');
 
     try {
-      const result = await createAttendance(parseInt(form.cadetId, 10), form.officerName);
-      setMessage(`Attendance recorded for ${result.cadetName ?? 'cadet'}.`);
+      await createAttendance(parseInt(form.cadetId, 10));
+      const cadetName = cadets.find((cadet) => Number(cadet.id) === parseInt(form.cadetId, 10))?.fullName ?? 'cadet';
+      setMessage(`Attendance recorded for ${cadetName}.`);
       resetForm();
       setFormOpen(false);
+      await loadData();
       refreshAfterMutation();
     } catch (submitError) {
       console.error(submitError);
       setError(submitError instanceof Error ? submitError.message : 'Unable to save attendance.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = (record: Attendance) => {
+    setEditTarget(record);
+    setForm({
+      cadetId: String(record.cadetId),
+      date: record.date ? record.date.slice(0, 16) : new Date().toISOString().slice(0, 16),
+      status: record.status ?? 'Present',
+    });
+    setEditOpen(true);
+    setError('');
+    setMessage('');
+  };
+
+  const handleSubmitEdit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editTarget) {
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    setMessage('');
+    try {
+      await updateAttendance(editTarget.id, {
+        cadetId: parseInt(form.cadetId, 10),
+        date: new Date(form.date).toISOString(),
+        status: form.status,
+      });
+      setMessage('Attendance updated successfully.');
+      setEditOpen(false);
+      setEditTarget(null);
+      await loadData();
+      refreshAfterMutation();
+    } catch (updateError) {
+      console.error(updateError);
+      setError(updateError instanceof Error ? updateError.message : 'Unable to update attendance.');
     } finally {
       setSaving(false);
     }
@@ -230,6 +306,7 @@ export default function Attendance() {
     try {
       await deleteAttendance(id);
       setMessage('Attendance record deleted.');
+      await loadData();
       refreshAfterMutation();
     } catch (deleteError) {
       console.error(deleteError);
@@ -239,27 +316,63 @@ export default function Attendance() {
 
   const processScannedQr = async (decodedText: string) => {
     if (!decodedText?.trim()) {
+      console.error('[Scanner] Empty QR code');
       setError('Scanned QR code is empty.');
       return;
     }
 
+    if (processingRef.current) {
+      console.log('[Scanner] Scan already processing, ignoring duplicate');
+      return;
+    }
+
+    processingRef.current = true;
     setSaving(true);
     setError('');
     setMessage('');
     setScanCode(decodedText);
 
-    await stopScanner();
-
     try {
-      const result = await scanAttendance(decodedText, session?.name);
-      setMessage(`Attendance recorded for ${result.cadetName ?? 'cadet'}.`);
+      console.log('[Scanner] Decoded QR value:', decodedText);
+      console.log('[Scanner] Stopping scanner before API call...');
+
+      if (scannerRef.current) {
+        if (scannerRef.current.isScanning) {
+          await scannerRef.current.stop();
+        }
+        await scannerRef.current.clear();
+        scannerRef.current = null;
+      }
+
+      const payload = { qrCodeId: decodedText };
+      console.log('[Scanner] POST payload:', JSON.stringify(payload));
+
+      const result = await scanAttendance(decodedText);
+      console.log('[Scanner] API response:', result);
+
+      setMessage(result.message || `Attendance recorded for ${result.cadetName ?? 'cadet'}.`);
       setScanOpen(false);
+
+      console.log('[Scanner] Refreshing attendance data...');
+      await loadData();
       refreshAfterMutation();
     } catch (scanError) {
-      console.error(scanError);
-      setError(scanError instanceof Error ? scanError.message : 'QR scan failed. Please try again.');
+      console.error('[Scanner] Error:', scanError);
+      if (scanError instanceof ApiError) {
+        console.error('[Scanner] API error status:', scanError.status);
+        if (scanError.status === 409) {
+          setError('Attendance already recorded today.');
+        } else if (scanError.status === 404 || scanError.status === 400) {
+          setError('Invalid QR Code');
+        } else {
+          setError(scanError.message);
+        }
+      } else {
+        setError(scanError instanceof Error ? scanError.message : 'QR scan failed. Please try again.');
+      }
     } finally {
       setSaving(false);
+      processingRef.current = false;
     }
   };
 
@@ -272,22 +385,91 @@ export default function Attendance() {
     await processScannedQr(scanCode);
   };
 
-  const filteredRecords = useMemo(() => {
+  const handleRunSearch = async () => {
     if (!search.trim()) {
-      return records;
+      await loadData();
+      return;
     }
 
-    const lower = search.toLowerCase();
-    return records.filter((record) => {
-      const cadetName = record.cadet?.fullName ?? String(record.cadetId);
-      return (
-        cadetName.toLowerCase().includes(lower) ||
-        String(record.cadetId).includes(lower) ||
-        record.date.includes(lower) ||
-        (record.status?.toLowerCase().includes(lower) ?? false)
-      );
-    });
-  }, [records, search]);
+    setLoading(true);
+    setError('');
+    try {
+      const trimmed = search.trim();
+      const params: { cadetId?: number; date?: string; status?: string } = {};
+      if (/^\d+$/.test(trimmed)) {
+        params.cadetId = Number(trimmed);
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        params.date = new Date(trimmed).toISOString();
+      } else {
+        params.status = trimmed;
+      }
+      const results = await searchAttendance(params);
+      setRecords(results);
+    } catch (searchError) {
+      console.error(searchError);
+      setError(searchError instanceof Error ? searchError.message : 'Unable to search attendance.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleApplyFilter = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await filterAttendance({
+        startDate: startDateFilter ? new Date(startDateFilter).toISOString() : undefined,
+        endDate: endDateFilter ? new Date(endDateFilter).toISOString() : undefined,
+        status: statusFilter || undefined,
+      });
+      setRecords(data);
+    } catch (filterError) {
+      console.error(filterError);
+      setError(filterError instanceof Error ? filterError.message : 'Unable to filter attendance.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoadHistory = async () => {
+    if (!historyCadetId) {
+      setError('Select a cadet to view history.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const cadetId = parseInt(historyCadetId, 10);
+      const [historyData, percentageData] = await Promise.all([
+        fetchAttendanceHistory(cadetId),
+        fetchAttendancePercentage(cadetId),
+      ]);
+      setCadetHistory(historyData);
+      setCadetPercentage(percentageData.attendancePercentage ?? percentageData.percentage ?? 0);
+    } catch (historyError) {
+      console.error(historyError);
+      setError(historyError instanceof Error ? historyError.message : 'Unable to load attendance history.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const report = await fetchAttendanceReport();
+      setReportSummary(report.weeklySummary);
+    } catch (reportError) {
+      console.error(reportError);
+      setError(reportError instanceof Error ? reportError.message : 'Unable to generate report.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredRecords = useMemo(() => records, [records]);
 
   if (!session?.role || !['admin', 'officer'].includes(session.role)) {
     return (
@@ -318,6 +500,13 @@ export default function Attendance() {
           </button>
           <button
             type="button"
+            onClick={() => void loadData()}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+          >
+            Refresh
+          </button>
+          <button
+            type="button"
             onClick={openCreateForm}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
           >
@@ -338,14 +527,93 @@ export default function Attendance() {
         </div>
       )}
 
+      <div className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Cadet ID, date (YYYY-MM-DD), or status"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm placeholder-slate-400 focus:border-emerald-500 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => void handleRunSearch()}
+              className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+            >
+              Search
+            </button>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filter</label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+            >
+              <option value="">All status</option>
+              <option value="Present">Present</option>
+              <option value="Absent">Absent</option>
+              <option value="Late">Late</option>
+            </select>
+            <input
+              type="date"
+              value={startDateFilter}
+              onChange={(e) => setStartDateFilter(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+            />
+            <input
+              type="date"
+              value={endDateFilter}
+              onChange={(e) => setEndDateFilter(e.target.value)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleApplyFilter()}
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+          >
+            Apply Filter
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase text-slate-500">Total Attendance</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{summary?.totalAttendance ?? records.length}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase text-slate-500">Present Today</p>
+          <p className="mt-2 text-2xl font-semibold text-emerald-600">{summary?.presentToday ?? 0}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase text-slate-500">Absent Today</p>
+          <p className="mt-2 text-2xl font-semibold text-rose-600">{summary?.absentToday ?? 0}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs uppercase text-slate-500">Attendance Rate</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{summary?.attendancePercentage ?? 0}%</p>
+        </div>
+      </div>
+
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <input
-          type="text"
-          placeholder="Search by cadet name, ID, status, or date…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm placeholder-slate-400 focus:border-emerald-500 focus:outline-none"
-        />
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Report</h2>
+          <button
+            type="button"
+            onClick={() => void handleGenerateReport()}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Generate Report
+          </button>
+        </div>
+        {reportSummary && <p className="mt-3 text-sm text-slate-700">{reportSummary}</p>}
       </div>
 
       {loading ? (
@@ -381,12 +649,14 @@ export default function Attendance() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleDelete(record.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => openEdit(record)} className="text-emerald-600 hover:text-emerald-800">
+                        <Pencil size={14} />
+                      </button>
+                      <button type="button" onClick={() => void handleDelete(record.id)} className="text-red-600 hover:text-red-800">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -394,6 +664,52 @@ export default function Attendance() {
           </table>
         </div>
       )}
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Attendance History & Percentage</h2>
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <select
+            value={historyCadetId}
+            onChange={(e) => setHistoryCadetId(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+          >
+            <option value="">Select cadet</option>
+            {cadets.map((cadet) => (
+              <option key={cadet.id} value={cadet.id}>
+                {cadet.fullName ?? `Cadet ${cadet.id}`}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => void handleLoadHistory()}
+            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            View History
+          </button>
+        </div>
+        {cadetPercentage !== null && <p className="mt-3 text-sm text-slate-700">Attendance Percentage: {cadetPercentage}%</p>}
+        {cadetHistory.length > 0 && (
+          <div className="mt-3 max-h-44 overflow-y-auto rounded-lg border border-slate-200">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50">
+                <tr>
+                  <th className="px-3 py-2 font-semibold text-slate-700">Date</th>
+                  <th className="px-3 py-2 font-semibold text-slate-700">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cadetHistory.map((item) => (
+                  <tr key={item.id} className="border-b border-slate-100">
+                    <td className="px-3 py-2">{item.date}</td>
+                    <td className="px-3 py-2">{item.status ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
@@ -419,15 +735,28 @@ export default function Attendance() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Officer name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Date and time</label>
                 <input
-                  type="text"
-                  name="officerName"
-                  value={form.officerName}
+                  type="datetime-local"
+                  name="date"
+                  value={form.date}
                   onChange={handleFormChange}
-                  placeholder="Your name"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                <select
+                  name="status"
+                  value={form.status}
+                  onChange={handleFormChange}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="Present">Present</option>
+                  <option value="Absent">Absent</option>
+                  <option value="Late">Late</option>
+                </select>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -451,6 +780,75 @@ export default function Attendance() {
         </div>
       )}
 
+      {editOpen && editTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
+            <h2 className="text-lg font-semibold text-slate-900">Update attendance</h2>
+            <form onSubmit={handleSubmitEdit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Cadet</label>
+                <select
+                  name="cadetId"
+                  value={form.cadetId}
+                  onChange={handleFormChange}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                  required
+                >
+                  {cadets.map((cadet) => (
+                    <option key={cadet.id} value={cadet.id}>
+                      {cadet.fullName ?? `Cadet ${cadet.id}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Date and time</label>
+                <input
+                  type="datetime-local"
+                  name="date"
+                  value={form.date}
+                  onChange={handleFormChange}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                <select
+                  name="status"
+                  value={form.status}
+                  onChange={handleFormChange}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                >
+                  <option value="Present">Present</option>
+                  <option value="Absent">Absent</option>
+                  <option value="Late">Late</option>
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditOpen(false);
+                    setEditTarget(null);
+                  }}
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {saving ? 'Saving…' : 'Update'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {scanOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
           <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg">
@@ -463,7 +861,6 @@ export default function Attendance() {
                 type="button"
                 onClick={() => {
                   setScanOpen(false);
-                  void stopScanner();
                 }}
                 className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
               >
@@ -486,7 +883,7 @@ export default function Attendance() {
                     type="text"
                     value={scanCode}
                     onChange={(e) => setScanCode(e.target.value)}
-                    placeholder="ROTC-CADET-15-AB82F93D"
+                    placeholder="Paste cadet qrCodeId"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
                     autoFocus
                     onKeyDown={(e) => e.key === 'Enter' && void handleScanQr()}
@@ -506,7 +903,6 @@ export default function Attendance() {
                     type="button"
                     onClick={() => {
                       setScanOpen(false);
-                      void stopScanner();
                     }}
                     className="flex-1 rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
                   >

@@ -8,6 +8,7 @@ export default function Reports() {
   const [records, setRecords] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -30,12 +31,17 @@ export default function Reports() {
       }
     };
 
-    loadData();
+    void loadData();
+    const handleRefresh = () => {
+      void loadData();
+    };
+    window.addEventListener('rotc-data-changed', handleRefresh);
+    return () => window.removeEventListener('rotc-data-changed', handleRefresh);
   }, []);
 
   const handleExportCsv = () => {
     if (records.length === 0) {
-      alert('No attendance records to export.');
+      setMessage('No attendance records to export.');
       return;
     }
 
@@ -50,6 +56,7 @@ export default function Reports() {
     a.download = `attendance-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
+    setMessage('Report exported successfully.');
   };
 
   return (
@@ -63,6 +70,10 @@ export default function Reports() {
         <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           <AlertCircle size={14} /> <span>{error}</span>
         </div>
+      )}
+
+      {message && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>
       )}
 
       {loading ? (

@@ -1,22 +1,30 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, LoaderCircle } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import { useAuth } from '../AuthContext';
-import { fetchAttendanceHistory, fetchAttendancePercentage } from '../attendanceService';
+import { fetchAttendancePercentage, fetchAttendanceSummary } from '../attendanceService';
 import { getCadetProfile } from '../cadetService';
-import type { Attendance, AttendanceSummary, CadetProfileResponse } from '../types';
+import type { Attendance, AttendanceSummary, ApiCadet } from '../types';
+
+type CadetProfilePayload = {
+  cadet?: ApiCadet | null;
+  attendanceHistory?: Attendance[];
+};
 
 export default function Profile() {
   const { session } = useAuth();
-  const [profile, setProfile] = useState<CadetProfileResponse | null>(null);
+  const [profile, setProfile] = useState<CadetProfilePayload | null>(null);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
+  const [globalSummary, setGlobalSummary] = useState<AttendanceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const loadData = useCallback(async () => {
-    if (!session?.cadetId) {
-      setError('Cadet ID not available.');
+    if (!session?.userId) {
+      setProfile(null);
+      setAttendance([]);
+      setAttendanceSummary(null);
       setLoading(false);
       return;
     }
@@ -25,25 +33,38 @@ export default function Profile() {
     setError('');
 
     try {
-      const [profileData, attendanceData, percentageData] = await Promise.all([
-        getCadetProfile(session.cadetId),
-        fetchAttendanceHistory(session.cadetId),
-        fetchAttendancePercentage(session.cadetId),
-      ]);
+      const profileData = await getCadetProfile(session.userId);
+      // backend returns { cadet: { ... }, attendanceHistory: [] }
+      setProfile(profileData as CadetProfilePayload);
 
-      setProfile(profileData);
-      setAttendance(Array.isArray(attendanceData) ? attendanceData : []);
-      setAttendanceSummary(percentageData);
+      const summaryData = await fetchAttendanceSummary();
+      setGlobalSummary(summaryData);
+
+      const cadetId = (profileData as any)?.cadet?.id ?? (profileData as any)?.id;
+
+      // Prefer attendanceHistory returned from profile API when available
+      const history = (profileData as any)?.attendanceHistory ?? [];
+      setAttendance(Array.isArray(history) ? history : []);
+
+      if (cadetId) {
+        const percentageData = await fetchAttendancePercentage(cadetId);
+        setAttendanceSummary(percentageData);
+      }
     } catch (loadError) {
       console.error(loadError);
       setError(loadError instanceof Error ? loadError.message : 'Unable to load profile data.');
     } finally {
       setLoading(false);
     }
-  }, [session?.cadetId]);
+  }, [session?.userId]);
 
   useEffect(() => {
     void loadData();
+    const handleRefresh = () => {
+      void loadData();
+    };
+    window.addEventListener('rotc-data-changed', handleRefresh);
+    return () => window.removeEventListener('rotc-data-changed', handleRefresh);
   }, [loadData]);
 
   if (!session) {
@@ -51,11 +72,13 @@ export default function Profile() {
   }
 
   const attendanceRate =
-    attendanceSummary?.attendancePercentage ?? attendanceSummary?.percentage ??
+    attendanceSummary?.attendancePercentage ??
+    attendanceSummary?.percentage ??
     (attendance.length > 0 ? Math.round((attendance.filter((r) => r.status === 'Present').length / attendance.length) * 100) : 0);
 
   const downloadQr = () => {
-    if (!profile?.qrCodeId) return;
+    const qrId = profile?.cadet?.qrCodeId ?? null;
+    if (!qrId) return;
 
     const svg = document.getElementById('cadet-qr-svg') as SVGElement | null;
     if (!svg) return;
@@ -67,11 +90,23 @@ export default function Profile() {
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${profile.fullName || 'cadet'}-qr.svg`;
+    a.download = `${profile?.cadet?.fullName || 'cadet'}-qr.svg`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const formatDate = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    try {
+      const dateStr = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(d);
+      const timeStr = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(d);
+      return { dateStr, timeStr };
+    } catch {
+      return { dateStr: iso, timeStr: '' } as any;
+    }
   };
 
   return (
@@ -98,7 +133,7 @@ export default function Profile() {
               <div>
                 <div>
                   <p className="text-sm text-slate-500">Full name</p>
-                  <p className="text-lg font-semibold text-slate-900">{profile?.fullName ?? session.name}</p>
+                  <p className="text-lg font-semibold text-slate-900">{profile?.cadet?.fullName ?? session.name}</p>
                 </div>
                 <div className="mt-4">
                   <p className="text-sm text-slate-500">Username</p>
@@ -107,17 +142,17 @@ export default function Profile() {
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div>
                     <p className="text-sm text-slate-500">Student Number</p>
-                    <p className="text-lg font-semibold text-slate-900">{profile?.studentNumber ?? '—'}</p>
+                    <p className="text-lg font-semibold text-slate-900">{profile?.cadet?.studentNumber ?? '—'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Year Level</p>
-                    <p className="text-lg font-semibold text-slate-900">{profile?.yearLevel ?? '—'}</p>
+                    <p className="text-lg font-semibold text-slate-900">{profile?.cadet?.yearLevel ?? '—'}</p>
                   </div>
                 </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div>
                     <p className="text-sm text-slate-500">Course</p>
-                    <p className="text-lg font-semibold text-slate-900">{profile?.course ?? '—'}</p>
+                    <p className="text-lg font-semibold text-slate-900">{profile?.cadet?.course ?? '—'}</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Role</p>
@@ -128,9 +163,9 @@ export default function Profile() {
 
               <div className="flex-shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-5 text-center">
                 <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">My QR Code</p>
-                {profile?.qrCodeId ? (
+                {profile?.cadet?.qrCodeId ? (
                   <div className="inline-flex items-center justify-center rounded-2xl bg-white p-4">
-                    <QRCode id="cadet-qr-svg" value={profile.qrCodeId} size={160} />
+                    <QRCode id="cadet-qr-svg" value={String(profile.cadet?.qrCodeId)} size={160} />
                   </div>
                 ) : (
                   <p className="text-sm text-slate-500">QR Code not available.</p>
@@ -139,7 +174,7 @@ export default function Profile() {
                   <button
                     type="button"
                     onClick={downloadQr}
-                    disabled={!profile?.qrCodeId}
+                    disabled={!profile?.cadet?.qrCodeId}
                     className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Download QR
@@ -158,7 +193,7 @@ export default function Profile() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Attendance history</h2>
-            <div className="grid gap-4 sm:grid-cols-2 mb-6">
+            <div className="grid gap-4 sm:grid-cols-3 mb-6">
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-xs uppercase text-slate-500">Attendance rate</p>
                 <p className="mt-2 text-2xl font-semibold text-slate-900">{attendanceRate}%</p>
@@ -166,6 +201,10 @@ export default function Profile() {
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-xs uppercase text-slate-500">Total records</p>
                 <p className="mt-2 text-2xl font-semibold text-slate-900">{attendance.length}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-500">Present today</p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">{globalSummary?.presentToday ?? 0}</p>
               </div>
             </div>
 
@@ -181,16 +220,22 @@ export default function Profile() {
                     </tr>
                   </thead>
                   <tbody>
-                    {attendance.map((record) => (
-                      <tr key={record.id} className="border-b border-slate-100">
-                        <td className="px-4 py-2 text-slate-900">{record.date}</td>
-                        <td className="px-4 py-2">
-                          <span className={`rounded-full px-2 py-1 text-xs font-semibold ${record.status === 'Present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                            {record.status || '—'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {attendance.map((record) => {
+                      const fmt = formatDate(record.date);
+                      return (
+                        <tr key={record.id} className="border-b border-slate-100">
+                          <td className="px-4 py-2 text-slate-900">
+                            <div>{fmt.dateStr}</div>
+                            <div className="text-sm text-slate-500">{fmt.timeStr}</div>
+                          </td>
+                          <td className="px-4 py-2">
+                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${record.status === 'Present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                              {record.status || '—'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

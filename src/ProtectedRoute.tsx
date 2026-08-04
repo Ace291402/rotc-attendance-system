@@ -15,8 +15,7 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles &&! allowedRoles.includes(session.role.toLowerCase() as Role))
-  {
+  if (allowedRoles && !allowedRoles.includes(session.role as Role)) {
     return <Navigate to={session.role === 'cadet' ? '/my-attendance' : '/dashboard'} replace />;
   }
 
