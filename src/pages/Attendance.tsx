@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, LoaderCircle, Pencil, Plus, QrCode, Trash2 } from 'lucide-react';
-import { Html5Qrcode } from 'html5-qrcode';
+
 import { useAuth } from '../AuthContext';
 import { ApiError } from '../api';
 import {
@@ -18,16 +18,22 @@ import {
 } from '../attendanceService';
 import { fetchCadets } from '../cadetService';
 import type { ApiCadet, Attendance, AttendanceSummary } from '../types';
+import { Html5Qrcode } from 'html5-qrcode';
+
 
 interface AttendanceFormState {
   cadetId: string;
   date: string;
+  timeIn: string;
+  timeOut: string;
   status: string;
 }
 
 const initialForm = (): AttendanceFormState => ({
   cadetId: '',
   date: new Date().toISOString().slice(0, 16),
+  timeIn: '',
+  timeOut: '',
   status: 'Present',
 });
 
@@ -56,16 +62,30 @@ export default function Attendance() {
   const [cadetPercentage, setCadetPercentage] = useState<number | null>(null);
   const [reportSummary, setReportSummary] = useState('');
 
-  const formatDateTime = (iso?: string) => {
-    if (!iso) return { dateStr: '', timeStr: '' };
+  const formatDateTime = (iso?: string | null) => {
+    if (!iso) return { dateStr: '—', timeStr: '—' };
     const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) {
-      return { dateStr: iso, timeStr: '' };
+    if (Number.isNaN(date.getTime()) || date.getFullYear() === 1) {
+      return { dateStr: '—', timeStr: '—' };
     }
     return {
-      dateStr: new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date),
-      timeStr: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(date),
+      dateStr: new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }).format(date),
+      timeStr: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true, timeZone: 'Asia/Manila' }).format(date),
     };
+  };
+
+  const formatToInputDateTime = (iso?: string | null) => {
+    if (!iso) return '';
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime()) || date.getFullYear() === 1) {
+      return '';
+    }
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
   const sortedRecords = useMemo(
@@ -80,6 +100,10 @@ export default function Attendance() {
 
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const processingRef = useRef(false);
+  const scanHandledRef = useRef(false);
+  const lastDecodedQrRef = useRef<string | null>(null);
+  const isInitializingRef = useRef(false);
+  const isStoppingRef = useRef(false);
 
   const refreshAfterMutation = () => {
     window.dispatchEvent(new Event('rotc-data-changed'));
@@ -106,90 +130,28 @@ export default function Attendance() {
     }
   }, []);
 
-  const searchRecords = useCallback(
-    async (query: string) => {
-      if (!query.trim()) {
-        await loadData();
-        return;
-      }
-
-      setLoading(true);
-      setError('');
-
-      try {
-        const trimmed = query.trim();
-        const params: { cadetId?: number; date?: string; status?: string } = {};
-        const normalized = trimmed.toLowerCase();
-        if (/^\d+$/.test(trimmed)) {
-          params.cadetId = Number(trimmed);
-        } else if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-          params.date = trimmed;
-        } else if (['present', 'absent', 'late'].includes(normalized)) {
-          params.status = trimmed;
-        }
-
-        if (Object.keys(params).length > 0) {
-          const results = await searchAttendance(params);
-          setRecords(results ?? []);
-        } else {
-          const attendanceData = await fetchAttendance();
-          const filtered = attendanceData.filter((record) => {
-            const cadet = record.cadet;
-            return [
-              cadet?.fullName,
-              cadet?.studentNumber,
-              cadet?.course,
-              cadet?.yearLevel,
-            ]
-              .filter(Boolean)
-              .some((value) => String(value).toLowerCase().includes(normalized));
-          });
-          setRecords(filtered);
-        }
-      } catch (searchError) {
-        console.error(searchError);
-        setError(searchError instanceof Error ? searchError.message : 'Unable to search attendance.');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [loadData]
-  );
-
-  useEffect(() => {
-    void loadData();
-
-    const handleRefresh = () => {
-      void loadData();
-    };
-
-    window.addEventListener('rotc-data-changed', handleRefresh);
-    return () => window.removeEventListener('rotc-data-changed', handleRefresh);
-  }, [loadData]);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      void searchRecords(search);
-    }, 300);
-
-    return () => clearTimeout(timeout);
-  }, [search, searchRecords]);
-
   useEffect(() => {
     const cleanupScanner = async () => {
-      if (scannerRef.current) {
-        try {
-          if (scannerRef.current.isScanning) {
-            console.log('[Scanner] Stopping scanner...');
-            await scannerRef.current.stop();
-          }
-          console.log('[Scanner] Clearing scanner...');
-          await scannerRef.current.clear();
-        } catch (cleanupError) {
-          console.error('[Scanner] Cleanup error:', cleanupError);
+      const scanner = scannerRef.current;
+      if (!scanner) return;
+
+      try {
+        if (typeof scanner.stop === 'function') {
+          await scanner.stop();
         }
-        scannerRef.current = null;
+      } catch (stopErr) {
+        console.warn('[Scanner] stop() error during cleanup (ignored):', stopErr);
       }
+
+      try {
+        if (typeof scanner.clear === 'function') {
+          await scanner.clear();
+        }
+      } catch (clearErr) {
+        console.warn('[Scanner] clear() error during cleanup (ignored):', clearErr);
+      }
+
+      scannerRef.current = null;
     };
 
     if (!scanOpen) {
@@ -197,14 +159,22 @@ export default function Attendance() {
       return;
     }
 
+    scanHandledRef.current = false;
+    lastDecodedQrRef.current = null;
     setCameraError('');
     setError('');
     setMessage('');
 
     const initScanner = async () => {
-      await cleanupScanner();
+      if (isInitializingRef.current) {
+        console.log('[Scanner] init already running, skipping');
+        return;
+      }
 
+      isInitializingRef.current = true;
       try {
+        await cleanupScanner();
+
         const cameras = await Html5Qrcode.getCameras();
         if (!cameras || cameras.length === 0) {
           console.error('[Scanner] No cameras found');
@@ -221,20 +191,42 @@ export default function Attendance() {
           { deviceId: { exact: cameraId } },
           { fps: 10, qrbox: 250 },
           async (decodedText: string) => {
-            if (processingRef.current || saving) {
-              console.log('[Scanner] Scan already processing, ignoring duplicate');
+            const value = decodedText?.trim();
+            if (!value) {
+              console.warn('[Scanner] Empty scan frame, ignoring');
               return;
             }
-            await processScannedQr(decodedText);
+
+            if (scanHandledRef.current) {
+              console.log('[Scanner] Scan already handled for this scanner session. Ignoring duplicate.');
+              return;
+            }
+
+            if (lastDecodedQrRef.current === value) {
+              console.log('[Scanner] Duplicate QR blocked:', value);
+              return;
+            }
+
+            scanHandledRef.current = true;
+            lastDecodedQrRef.current = value;
+
+            try {
+              await processScannedQr(value);
+            } catch (scanProcessError) {
+              console.error('[Scanner] QR processing error:', scanProcessError);
+            }
           },
-          () => {
-            // scanning progress callback intentionally ignored
+          (errorMessage: string) => {
+            console.warn('[Scanner] QR error:', errorMessage);
           }
         );
+
         console.log('[Scanner] Scanner started successfully');
       } catch (scanError) {
         console.error('[Scanner] Initialization error:', scanError);
         setCameraError(scanError instanceof Error ? scanError.message : 'Unable to start the camera.');
+      } finally {
+        isInitializingRef.current = false;
       }
     };
 
@@ -243,62 +235,68 @@ export default function Attendance() {
     return () => {
       void cleanupScanner();
     };
-  }, [scanOpen, saving]);
+  }, [scanOpen]);
 
-  const resetForm = () => {
-    setForm(initialForm());
-  };
+        const resetForm = () => {
+          setForm(initialForm());
+        };
 
-  const openCreateForm = () => {
-    resetForm();
-    setFormOpen(true);
-    setMessage('');
-    setError('');
-  };
+        const openCreateForm = () => {
+          resetForm();
+          setFormOpen(true);
+          setMessage('');
+          setError('');
+        };
 
-  const closeCreateForm = () => {
-    setFormOpen(false);
-    resetForm();
-  };
+        const closeCreateForm = () => {
+          setFormOpen(false);
+          resetForm();
+        };
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
+        const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+          const { name, value } = e.target;
+          setForm((prev) => ({ ...prev, [name]: value }));
+        };
 
-  const handleSubmitCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
+        const handleSubmitCreate = async (e: React.FormEvent) => {
+          e.preventDefault();
 
-    if (!form.cadetId) {
-      setError('Cadet is required.');
-      return;
-    }
+          if (!form.cadetId) {
+            setError('Cadet is required.');
+            return;
+          }
 
-    setSaving(true);
-    setError('');
-    setMessage('');
+          setSaving(true);
+          setError('');
+          setMessage('');
 
-    try {
-      await createAttendance(parseInt(form.cadetId, 10));
-      const cadetName = cadets.find((cadet) => Number(cadet.id) === parseInt(form.cadetId, 10))?.fullName ?? 'cadet';
-      setMessage(`Attendance recorded for ${cadetName}.`);
-      resetForm();
-      setFormOpen(false);
-      await loadData();
-      refreshAfterMutation();
-    } catch (submitError) {
-      console.error(submitError);
-      setError(submitError instanceof Error ? submitError.message : 'Unable to save attendance.');
-    } finally {
-      setSaving(false);
-    }
-  };
+          try {
+            await createAttendance(parseInt(form.cadetId, 10), {
+              timeIn: form.timeIn || undefined,
+              timeOut: form.timeOut || undefined,
+              status: form.status,
+            });
+            const cadetName = cadets.find((cadet) => Number(cadet.id) === parseInt(form.cadetId, 10))?.fullName ?? 'cadet';
+            setMessage(`Attendance recorded for ${cadetName}.`);
+            resetForm();
+            setFormOpen(false);
+            await loadData();
+            refreshAfterMutation();
+          } catch (submitError) {
+            console.error(submitError);
+            setError(submitError instanceof Error ? submitError.message : 'Unable to save attendance.');
+          } finally {
+            setSaving(false);
+          }
+        };
 
   const openEdit = (record: Attendance) => {
     setEditTarget(record);
     setForm({
       cadetId: String(record.cadetId),
       date: record.date ? record.date.slice(0, 16) : new Date().toISOString().slice(0, 16),
+      timeIn: formatToInputDateTime(record.timeIn ?? null),
+      timeOut: formatToInputDateTime(record.timeOut ?? null),
       status: record.status ?? 'Present',
     });
     setEditOpen(true);
@@ -319,6 +317,8 @@ export default function Attendance() {
       await updateAttendance(editTarget.id, {
         cadetId: parseInt(form.cadetId, 10),
         date: new Date(form.date).toISOString(),
+        timeIn: form.timeIn || undefined,
+        timeOut: form.timeOut || undefined,
         status: form.status,
       });
       setMessage('Attendance updated successfully.');
@@ -375,11 +375,26 @@ export default function Attendance() {
       console.log('[Scanner] Decoded QR value:', decodedText);
       console.log('[Scanner] Stopping scanner before API call...');
 
-      if (scannerRef.current) {
-        if (scannerRef.current.isScanning) {
-          await scannerRef.current.stop();
+      const scanner = scannerRef.current;
+      if (scanner) {
+        try {
+          if (!isStoppingRef.current && typeof scanner.stop === 'function') {
+            isStoppingRef.current = true;
+            await scanner.stop();
+          }
+        } catch (stopErr) {
+          console.warn('[Scanner] stop error (ignored):', stopErr);
         }
-        await scannerRef.current.clear();
+
+        try {
+          if (typeof scanner.clear === 'function') {
+            await scanner.clear();
+          }
+        } catch (clearErr) {
+          console.warn('[Scanner] clear error (ignored):', clearErr);
+        }
+
+        isStoppingRef.current = false;
         scannerRef.current = null;
       }
 
@@ -692,6 +707,8 @@ export default function Attendance() {
               <tr>
                 <th className="px-4 py-3 font-semibold text-slate-700">Cadet</th>
                 <th className="px-4 py-3 font-semibold text-slate-700">Date</th>
+                <th className="px-4 py-3 font-semibold text-slate-700">Time In</th>
+                <th className="px-4 py-3 font-semibold text-slate-700">Time Out</th>
                 <th className="px-4 py-3 font-semibold text-slate-700">Status</th>
                 <th className="px-4 py-3 font-semibold text-slate-700">Actions</th>
               </tr>
@@ -713,6 +730,12 @@ export default function Attendance() {
                         </>
                       );
                     })()}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {record.timeIn ? formatDateTime(record.timeIn).timeStr : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {record.timeOut ? formatDateTime(record.timeOut).timeStr : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`rounded-full px-2 py-1 text-xs font-semibold ${record.status === 'Present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
@@ -821,7 +844,26 @@ export default function Attendance() {
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
                 />
               </div>
-
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Time In</label>
+                <input
+                  type="datetime-local"
+                  name="timeIn"
+                  value={form.timeIn}
+                  onChange={handleFormChange}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Time Out</label>
+                <input
+                  type="datetime-local"
+                  name="timeOut"
+                  value={form.timeOut}
+                  onChange={handleFormChange}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
                 <select
@@ -887,6 +929,26 @@ export default function Attendance() {
                   onChange={handleFormChange}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
                   required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Time In</label>
+                <input
+                  type="datetime-local"
+                  name="timeIn"
+                  value={form.timeIn}
+                  onChange={handleFormChange}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Time Out</label>
+                <input
+                  type="datetime-local"
+                  name="timeOut"
+                  value={form.timeOut}
+                  onChange={handleFormChange}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
                 />
               </div>
               <div>

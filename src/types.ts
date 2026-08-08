@@ -48,6 +48,8 @@ export interface Attendance {
   id: number;
   cadetId: number;
   date: string;
+  timeIn?: string | null;
+  timeOut?: string | null;
   status?: string | null;
   notes?: string | null;
   cadet?: ApiCadet;

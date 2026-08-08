@@ -1,4 +1,4 @@
-import axios, { AxiosError, AxiosHeaders } from 'axios';
+import axios, { AxiosError } from 'axios';
 import type { Role } from './types';
 
 const TOKEN_KEY = 'rotc_auth_token';
@@ -69,6 +69,7 @@ export function getAuthToken() {
 }
 
 export function setAuthToken(token: string) {
+  console.log("SAVING TOKEN:", token);
   localStorage.setItem(TOKEN_KEY, token);
 }
 
@@ -109,14 +110,15 @@ api.interceptors.request.use((config) => {
   const requestUrl = String(config.url || '');
   const isAuthEndpoint = AUTH_ENDPOINTS.some((endpoint) => requestUrl.includes(endpoint));
 
+  console.debug('[api] request', { requestUrl, isAuthEndpoint, hasToken: !!token });
+
   if (token && !isAuthEndpoint) {
-    if (config.headers instanceof AxiosHeaders) {
-      config.headers.set('Authorization', `Bearer ${token}`);
-    } else {
-      const headers = new AxiosHeaders(config.headers);
-      headers.set('Authorization', `Bearer ${token}`);
-      config.headers = headers;
-    }
+    const existing = (config.headers && typeof config.headers === 'object') ? (config.headers as Record<string, unknown>) : {};
+    config.headers = {
+      ...existing,
+      Authorization: 'Bearer ' + token,
+    } as any;
+    console.debug('[api] attached Authorization header to request');
   }
 
   return config;
@@ -153,6 +155,7 @@ api.interceptors.response.use(
     return Promise.reject(new ApiError(message, status, data));
   },
 );
+
 
 
 

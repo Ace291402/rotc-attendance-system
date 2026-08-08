@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Shield, LogOut, BarChart2, CheckCircle, Users, FileText, User, Bell, Search, ChevronDown, Settings, UserCircle2 } from 'lucide-react';
+import { Shield, LogOut, BarChart2, CheckCircle, Users, FileText, User, Bell, Search, ChevronDown, Settings, UserCircle2, Menu, X } from 'lucide-react';
 import type { Role } from '../types';
 
 interface LayoutProps {
@@ -12,6 +13,8 @@ interface LayoutProps {
 }
 
 export default function Layout({ children, username, role, currentTab, setCurrentTab, onLogout }: LayoutProps) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
   const initials = username
     .split(/\s+/)
     .filter(Boolean)
@@ -21,8 +24,8 @@ export default function Layout({ children, username, role, currentTab, setCurren
     .toUpperCase() || 'RO';
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800">
-      <div className="flex min-h-screen">
+    <div className="min-h-screen bg-slate-100 text-slate-800 overflow-x-hidden">
+      <div className="flex min-h-screen w-full max-w-full">
         <aside className="hidden w-72 flex-col justify-between bg-[#0F3D2E] p-6 text-white lg:flex">
           <div>
             <div className="mb-8 flex items-center gap-3">
@@ -77,17 +80,103 @@ export default function Layout({ children, username, role, currentTab, setCurren
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 w-full max-w-full">
+          <div className="mx-auto w-full max-w-7xl">
+            <div className="border-b border-slate-200 bg-white px-4 py-3 shadow-sm lg:hidden">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMobileNavOpen(true)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-700"
+                  >
+                    <Menu size={20} />
+                  </button>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">ROTC Dashboard</p>
+                    <p className="text-xs text-slate-500 truncate">{username}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  <LogOut size={16} />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              </div>
+            </div>
+            {mobileNavOpen && (
+              <div className="fixed inset-0 z-50 flex bg-slate-900/70 lg:hidden">
+                <div className="absolute inset-0" onClick={() => setMobileNavOpen(false)} aria-hidden="true" />
+                <div className="relative flex w-72 flex-col justify-between bg-[#0F3D2E] p-6 text-white shadow-xl">
+                  <div>
+                    <div className="mb-8 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="rounded-2xl bg-white/10 p-2.5">
+                          <Shield className="h-5 w-5 text-emerald-300" />
+                        </div>
+                        <div>
+                          <p className="text-lg font-semibold">ROTC</p>
+                          <p className="text-xs text-emerald-100/80">Attendance management</p>
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setMobileNavOpen(false)} className="rounded-2xl bg-white/10 p-2.5 text-white">
+                        <X size={20} />
+                      </button>
+                    </div>
+                    <nav className="space-y-2">
+                      {role === 'admin' || role === 'officer' ? (
+                        <>
+                          <button type="button" onClick={() => { setCurrentTab('dashboard'); setMobileNavOpen(false); }} className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition ${currentTab === 'dashboard' ? 'bg-white text-[#0F3D2E] shadow-sm' : 'text-emerald-50/90 hover:bg-white/10'}`}>
+                            <BarChart2 size={17} /> Dashboard
+                          </button>
+                          <button type="button" onClick={() => { setCurrentTab('attendance'); setMobileNavOpen(false); }} className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition ${currentTab === 'attendance' ? 'bg-white text-[#0F3D2E] shadow-sm' : 'text-emerald-50/90 hover:bg-white/10'}`}>
+                            <CheckCircle size={17} /> Attendance
+                          </button>
+                          {role === 'admin' && (
+                            <button type="button" onClick={() => { setCurrentTab('cadets'); setMobileNavOpen(false); }} className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition ${currentTab === 'cadets' ? 'bg-white text-[#0F3D2E] shadow-sm' : 'text-emerald-50/90 hover:bg-white/10'}`}>
+                              <Users size={17} /> Cadets
+                            </button>
+                          )}
+                          <button type="button" onClick={() => { setCurrentTab('reports'); setMobileNavOpen(false); }} className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition ${currentTab === 'reports' ? 'bg-white text-[#0F3D2E] shadow-sm' : 'text-emerald-50/90 hover:bg-white/10'}`}>
+                            <FileText size={17} /> Reports
+                          </button>
+                          <button type="button" onClick={() => { setCurrentTab('profile'); setMobileNavOpen(false); }} className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition ${currentTab === 'profile' ? 'bg-white text-[#0F3D2E] shadow-sm' : 'text-emerald-50/90 hover:bg-white/10'}`}>
+                            <UserCircle2 size={17} /> Profile
+                          </button>
+                        </>
+                      ) : (
+                        <button type="button" onClick={() => { setCurrentTab('my-attendance'); setMobileNavOpen(false); }} className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition ${currentTab === 'my-attendance' ? 'bg-white text-[#0F3D2E] shadow-sm' : 'text-emerald-50/90 hover:bg-white/10'}`}>
+                          <User size={17} /> My Attendance
+                        </button>
+                      )}
+                    </nav>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/10 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{username}</p>
+                        <p className="text-xs capitalize text-emerald-100/80">{role} access</p>
+                      </div>
+                      <button type="button" onClick={onLogout} className="rounded-xl bg-white/10 p-2 text-emerald-100 transition hover:bg-red-500/20 hover:text-red-200">
+                        <LogOut size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="mb-6 flex flex-col gap-4 rounded-[20px] border border-slate-200 bg-white px-5 py-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">Operations</p>
                 <h2 className="text-xl font-semibold text-slate-900">ROTC Attendance Workspace</h2>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
                   <Search size={15} />
-                  <span>Search</span>
+                  <span className="hidden sm:inline">Search</span>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600">
                   <Bell size={16} />
@@ -95,9 +184,9 @@ export default function Layout({ children, username, role, currentTab, setCurren
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600">
                   <Settings size={16} />
                 </div>
-                <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0F3D2E] text-xs font-semibold text-white">{initials}</span>
-                  <span>{username}</span>
+                  <span className="hidden md:inline truncate">{username}</span>
                   <ChevronDown size={16} />
                 </div>
               </div>

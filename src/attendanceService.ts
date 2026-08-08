@@ -1,4 +1,5 @@
 import { api } from './api';
+import axios from 'axios';
 import type {
   Attendance,
   AttendanceFilterParams,
@@ -11,6 +12,8 @@ import type {
 export interface AttendancePayload {
   cadetId: number;
   date?: string;
+  timeIn?: string | null;
+  timeOut?: string | null;
   status?: string;
 }
 
@@ -93,11 +96,12 @@ export async function fetchAttendanceSummary(): Promise<AttendanceSummary> {
   return asSummary(response.data);
 }
 
-export async function createAttendance(cadetId: number): Promise<{ success: boolean; message: string; attendanceId?: number; cadetName?: string }> {
+export async function createAttendance(cadetId: number, payloadOverrides?: Partial<AttendancePayload>): Promise<{ success: boolean; message: string; attendanceId?: number; cadetName?: string }> {
   const payload: AttendancePayload = {
     cadetId,
     date: new Date().toISOString(),
     status: 'Present',
+    ...payloadOverrides,
   };
   const response = await api.post('/api/Attendance/attendance', payload);
   return response.data;
@@ -129,9 +133,34 @@ export async function fetchAttendanceReport(): Promise<AttendanceReport> {
 }
 
 export async function scanAttendance(qrCodeId: string): Promise<AttendanceScanResponse> {
-  const response = await api.post('/api/Attendance/scan', {
-    qrCodeId,
-  });
+  const path = '/api/Attendance/scan';
+  try {
+    console.debug('[attendanceService] scanAttendance', {
+      baseURL: (api.defaults && (api.defaults as any).baseURL) || undefined,
+      url: ((api.defaults as any).baseURL || '') + path,
+      payload: { qrCodeId },
+    });
 
-  return response.data as AttendanceScanResponse;
+    const response = await api.post(path, { qrCodeId });
+
+    console.debug('[attendanceService] scanAttendance response', {
+      status: response.status,
+      data: response.data,
+    });
+
+    return response.data as AttendanceScanResponse;
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      console.error('[attendanceService] scanAttendance axios error', {
+        message: err.message,
+        status: err.response?.status,
+        data: err.response?.data,
+        requestUrl: err.config?.url,
+        requestHeaders: err.config?.headers,
+      });
+    } else {
+      console.error('[attendanceService] scanAttendance unknown error', err);
+    }
+    throw err;
+  }
 }

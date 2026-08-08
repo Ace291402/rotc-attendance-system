@@ -92,16 +92,16 @@ export default function Profile() {
     URL.revokeObjectURL(url);
   };
 
-  const formatDate = (iso?: string) => {
-    if (!iso) return '';
+  const formatDate = (iso?: string | null) => {
+    if (!iso) return { dateStr: '—', timeStr: '—' };
     const d = new Date(iso);
-    try {
-      const dateStr = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(d);
-      const timeStr = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true }).format(d);
-      return { dateStr, timeStr };
-    } catch {
-      return { dateStr: iso, timeStr: '' } as any;
+    if (Number.isNaN(d.getTime()) || d.getFullYear() === 1) {
+      return { dateStr: '—', timeStr: '—' };
     }
+    return {
+      dateStr: new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }).format(d),
+      timeStr: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: true, timeZone: 'Asia/Manila' }).format(d),
+    };
   };
 
   return (
@@ -211,6 +211,8 @@ export default function Profile() {
                   <thead className="border-b border-slate-200 bg-slate-50">
                     <tr>
                       <th className="px-4 py-2 font-semibold text-slate-700">Date</th>
+                      <th className="px-4 py-2 font-semibold text-slate-700">Time In</th>
+                      <th className="px-4 py-2 font-semibold text-slate-700">Time Out</th>
                       <th className="px-4 py-2 font-semibold text-slate-700">Status</th>
                     </tr>
                   </thead>
@@ -222,6 +224,12 @@ export default function Profile() {
                           <td className="px-4 py-2 text-slate-900">
                             <div>{fmt.dateStr}</div>
                             <div className="text-sm text-slate-500">{fmt.timeStr}</div>
+                          </td>
+                          <td className="px-4 py-2 text-slate-900">
+                            {record.timeIn ? formatDate(record.timeIn).timeStr : '—'}
+                          </td>
+                          <td className="px-4 py-2 text-slate-900">
+                            {record.timeOut ? formatDate(record.timeOut).timeStr : '—'}
                           </td>
                           <td className="px-4 py-2">
                             <span className={`rounded-full px-2 py-1 text-xs font-semibold ${record.status === 'Present' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
