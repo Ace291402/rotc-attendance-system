@@ -103,7 +103,6 @@ export default function Attendance() {
   const scanHandledRef = useRef(false);
   const lastDecodedQrRef = useRef<string | null>(null);
   const isInitializingRef = useRef(false);
-  const isStoppingRef = useRef(false);
 
   const refreshAfterMutation = () => {
     window.dispatchEvent(new Event('rotc-data-changed'));
@@ -214,6 +213,7 @@ export default function Attendance() {
               await processScannedQr(value);
             } catch (scanProcessError) {
               console.error('[Scanner] QR processing error:', scanProcessError);
+              scanHandledRef.current = false;
             }
           },
           (errorMessage: string) => {
@@ -369,17 +369,18 @@ export default function Attendance() {
     setSaving(true);
     setError('');
     setMessage('');
-    setScanCode(decodedText);
+    const normalizedQrCode = decodedText.trim();
+    setScanCode(normalizedQrCode);
 
     try {
-      console.log('[Scanner] Decoded QR value:', decodedText);
+      console.log('[Scanner] decoded QR:', normalizedQrCode);
+      console.log('[Scanner] calling scanAttendance with:', { qrCodeId: normalizedQrCode });
       console.log('[Scanner] Stopping scanner before API call...');
 
       const scanner = scannerRef.current;
       if (scanner) {
         try {
-          if (!isStoppingRef.current && typeof scanner.stop === 'function') {
-            isStoppingRef.current = true;
+          if (typeof scanner.stop === 'function') {
             await scanner.stop();
           }
         } catch (stopErr) {
@@ -394,17 +395,25 @@ export default function Attendance() {
           console.warn('[Scanner] clear error (ignored):', clearErr);
         }
 
-        isStoppingRef.current = false;
         scannerRef.current = null;
       }
 
-      const payload = { qrCodeId: decodedText };
+      const payload = { qrCodeId: normalizedQrCode };
       console.log('[Scanner] POST payload:', JSON.stringify(payload));
 
-      const result = await scanAttendance(decodedText);
-      console.log('[Scanner] API response:', result);
+      const result = await scanAttendance(normalizedQrCode);
+      console.log('[Scanner] API response status:', result ? 'success' : 'unknown');
+      console.log('[Scanner] API response data:', result);
 
-      setMessage(result.message || `Attendance recorded for ${result.cadetName ?? 'cadet'}.`);
+      // Show appropriate message based on backend response (backend controls TimeIn/TimeOut)
+      const name = result?.cadet?.fullName ?? 'cadet';
+      if (result?.timeOut == null) {
+        setMessage(`Time In recorded successfully for ${name}.`);
+      } else {
+        setMessage(`Time Out recorded successfully for ${name}.`);
+      }
+
+      // Close scanner modal and refresh data
       setScanOpen(false);
 
       console.log('[Scanner] Refreshing attendance data...');
@@ -414,10 +423,18 @@ export default function Attendance() {
       console.error('[Scanner] Error:', scanError);
       if (scanError instanceof ApiError) {
         console.error('[Scanner] API error status:', scanError.status);
-        if (scanError.status === 409) {
-          setError('Attendance already recorded today.');
-        } else if (scanError.status === 404 || scanError.status === 400) {
-          setError('Invalid QR Code');
+        if (scanError.status === 401) {
+          setError('Unauthorized. Please login again.');
+        } else if (scanError.status === 404) {
+          setError('QR not found or attendance already recorded for today.');
+        } else if (scanError.status === 400) {
+          setError('Invalid QR code.');
+        } else if (scanError.status === 409) {
+          // Backend may provide a helpful message in 409
+          setError(scanError.message || 'Conflict: attendance could not be processed.');
+        } else if (scanError.status === 500) {
+          setError('Server error while processing the QR. Please try again later.');
+          console.error(scanError);
         } else {
           setError(scanError.message);
         }

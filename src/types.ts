@@ -108,11 +108,7 @@ export interface AttendanceCreateResponse {
   cadetName?: string;
 }
 
-export interface AttendanceScanResponse {
-  success: boolean;
-  message: string;
-  cadetName?: string;
-}
+export type AttendanceScanResponse = Attendance;
 
 export interface RegisterResponse {
   success?: boolean;

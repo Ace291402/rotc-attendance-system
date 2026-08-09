@@ -134,16 +134,21 @@ export async function fetchAttendanceReport(): Promise<AttendanceReport> {
 
 export async function scanAttendance(qrCodeId: string): Promise<AttendanceScanResponse> {
   const path = '/api/Attendance/scan';
+  const trimmedQrCodeId = qrCodeId?.trim();
+  if (!trimmedQrCodeId) {
+    throw new Error('QR code is required.');
+  }
+
   try {
-    console.debug('[attendanceService] scanAttendance', {
+    console.log('[attendanceService] scanAttendance calling', {
       baseURL: (api.defaults && (api.defaults as any).baseURL) || undefined,
-      url: ((api.defaults as any).baseURL || '') + path,
-      payload: { qrCodeId },
+      url: `${(api.defaults as any).baseURL || ''}${path}`,
+      payload: { qrCodeId: trimmedQrCodeId },
     });
 
-    const response = await api.post(path, { qrCodeId });
+    const response = await api.post(path, { qrCodeId: trimmedQrCodeId });
 
-    console.debug('[attendanceService] scanAttendance response', {
+    console.log('[attendanceService] scanAttendance response', {
       status: response.status,
       data: response.data,
     });
