@@ -112,6 +112,27 @@ export async function registerUser(
   return response.data;
 }
 
+export async function requestPasswordReset(email: string): Promise<{ message?: string }> {
+  const response = await api.post<{ message?: string }>('/api/Authentication/forgot-password', { email });
+  return response.data;
+}
+
+export async function validateResetToken(token: string): Promise<{ valid?: boolean; message?: string }> {
+  const response = await api.get<{ valid?: boolean; message?: string }>('/api/Authentication/reset-password/validate', {
+    params: { token },
+  });
+  return response.data;
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ message?: string }> {
+  const response = await api.post<{ message?: string }>('/api/Authentication/reset-password', {
+    token,
+    newPassword,
+  });
+
+  return response.data;
+}
+
 export async function logoutUser(): Promise<void> {
   try {
     await api.post('/api/Authentication/logout');

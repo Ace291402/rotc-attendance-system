@@ -69,7 +69,6 @@ export function getAuthToken() {
 }
 
 export function setAuthToken(token: string) {
-  console.log("SAVING TOKEN:", token);
   localStorage.setItem(TOKEN_KEY, token);
 }
 
@@ -103,7 +102,13 @@ export function clearAuthStorage() {
   clearStoredAuthSession();
 }
 
-const AUTH_ENDPOINTS = ['/api/Authentication/login', '/api/Authentication/register', '/api/Authentication/logout'];
+const AUTH_ENDPOINTS = [
+  '/api/Authentication/login',
+  '/api/Authentication/register',
+  '/api/Authentication/logout',
+  '/api/Authentication/forgot-password',
+  '/api/Authentication/reset-password',
+];
 
 api.interceptors.request.use((config) => {
   const token = getAuthToken();

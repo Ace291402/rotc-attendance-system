@@ -9,6 +9,8 @@ import Attendance from './pages/Attendance';
 import Cadets from './pages/Cadets';
 import Reports from './pages/Reports';
 import Profile from './pages/Profile';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 const TAB_BY_PATH: Record<string, string> = {
   '/dashboard': 'dashboard',
@@ -50,6 +52,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <Layout
       username={session.username}
       role={session.role}
+      cadetId={session.cadetId}
       currentTab={currentTab}
       setCurrentTab={(tab) => navigate(PATH_BY_TAB[tab] ?? defaultRoute(session.role))}
       onLogout={logout}
@@ -68,6 +71,8 @@ export default function App() {
         path="/login"
         element={session ? <Navigate to={defaultRoute(session.role)} replace /> : <Login />}
       />
+      <Route path="/forgot-password" element={session ? <Navigate to={defaultRoute(session.role)} replace /> : <ForgotPassword />} />
+      <Route path="/reset-password" element={session ? <Navigate to={defaultRoute(session.role)} replace /> : <ResetPassword />} />
 
       <Route
         path="/dashboard"

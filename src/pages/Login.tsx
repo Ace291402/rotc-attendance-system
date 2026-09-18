@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Shield, AlertCircle, CheckCircle2 } from 'lucide-react';
 import QRCode from 'react-qr-code';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
 export default function Login() {
   // Using Auth context
   const { login: onLogin, register: onRegister, loading } = useAuth();
+  const navigate = useNavigate();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -223,6 +225,11 @@ export default function Login() {
               <label className="block text-xs font-medium text-slate-700 mb-1">Password</label>
               <input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900" />
+              {!isRegistering && (
+                <button type="button" onClick={() => navigate('/forgot-password')} className="text-xs text-slate-500 hover:text-slate-900 cursor-pointer mt-1">
+                  Forgot Password?
+                </button>
+              )}
             </div>
 
             <button
