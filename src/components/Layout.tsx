@@ -293,43 +293,45 @@ export default function Layout({ children, username, role, cadetId, currentTab, 
                 <h2 className="text-xl font-semibold text-slate-900">ROTC Attendance Workspace</h2>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <div ref={searchRef} className="relative">
-                  <button
-                    type="button"
-                    aria-expanded={searchOpen}
-                    aria-label="Search records"
-                    onClick={() => { setSearchOpen((open) => !open); setNotificationOpen(false); }}
-                    className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
-                  >
-                    <Search size={15} />
-                    <span className="hidden sm:inline">Search</span>
-                  </button>
-                  {searchOpen && (
-                    <div className="absolute right-0 top-12 z-40 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-                      <input
-                        autoFocus
-                        value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
-                        placeholder="Search cadets or attendance"
-                        aria-label="Search cadets or attendance"
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500"
-                      />
-                      {dataLoading && <LoaderCircle className="mx-auto my-4 animate-spin text-slate-400" size={18} />}
-                      {!dataLoading && dataError && <p className="px-2 py-4 text-sm text-red-600">{dataError}</p>}
-                      {!dataLoading && !dataError && normalizedSearch && searchResults.length === 0 && <p className="px-2 py-4 text-sm text-slate-500">No results found</p>}
-                      {!dataLoading && !dataError && searchResults.length > 0 && (
-                        <div className="mt-2 max-h-72 overflow-y-auto">
-                          {searchResults.map((result) => (
-                            <button type="button" key={result.key} onClick={() => openSearchResult(result.path)} className="block w-full rounded-xl px-3 py-2 text-left hover:bg-slate-50">
-                              <span className="block truncate text-sm font-semibold text-slate-800">{result.title}</span>
-                              <span className="block truncate text-xs text-slate-500">{result.detail}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                {role !== 'cadet' && (
+                  <div ref={searchRef} className="relative">
+                    <button
+                      type="button"
+                      aria-expanded={searchOpen}
+                      aria-label="Search records"
+                      onClick={() => { setSearchOpen((open) => !open); setNotificationOpen(false); }}
+                      className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                    >
+                      <Search size={15} />
+                      <span className="hidden sm:inline">Search</span>
+                    </button>
+                    {searchOpen && (
+                      <div className="absolute right-0 top-12 z-40 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                        <input
+                          autoFocus
+                          value={searchTerm}
+                          onChange={(event) => setSearchTerm(event.target.value)}
+                          placeholder="Search cadets or attendance"
+                          aria-label="Search cadets or attendance"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500"
+                        />
+                        {dataLoading && <LoaderCircle className="mx-auto my-4 animate-spin text-slate-400" size={18} />}
+                        {!dataLoading && dataError && <p className="px-2 py-4 text-sm text-red-600">{dataError}</p>}
+                        {!dataLoading && !dataError && normalizedSearch && searchResults.length === 0 && <p className="px-2 py-4 text-sm text-slate-500">No results found</p>}
+                        {!dataLoading && !dataError && searchResults.length > 0 && (
+                          <div className="mt-2 max-h-72 overflow-y-auto">
+                            {searchResults.map((result) => (
+                              <button type="button" key={result.key} onClick={() => openSearchResult(result.path)} className="block w-full rounded-xl px-3 py-2 text-left hover:bg-slate-50">
+                                <span className="block truncate text-sm font-semibold text-slate-800">{result.title}</span>
+                                <span className="block truncate text-xs text-slate-500">{result.detail}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div ref={notificationRef} className="relative">
                   <button
                     type="button"
@@ -362,9 +364,11 @@ export default function Layout({ children, username, role, cadetId, currentTab, 
                     </div>
                   )}
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600">
-                  <Settings size={16} />
-                </div>
+                {role !== 'cadet' && (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600">
+                    <Settings size={16} />
+                  </div>
+                )}
                 <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0F3D2E] text-xs font-semibold text-white">{initials}</span>
                   <span className="hidden md:inline truncate">{username}</span>
