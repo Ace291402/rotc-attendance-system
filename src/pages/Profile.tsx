@@ -75,11 +75,34 @@ export default function Profile() {
     const qrId = profile?.cadet?.qrCodeId ?? null;
     if (!qrId) return;
 
-    const svg = document.getElementById('cadet-qr-svg') as SVGElement | null;
+    const svg = document.getElementById('cadet-qr-svg') as SVGSVGElement | null;
     if (!svg) return;
 
+    const exportedSvg = svg.cloneNode(true) as SVGSVGElement;
+    const viewBox = svg.viewBox.baseVal;
+    if (!viewBox.width || !viewBox.height) return;
+
+    const padding = Math.max(viewBox.width, viewBox.height) * 0.2;
+    const exportViewBox = {
+      x: viewBox.x - padding,
+      y: viewBox.y - padding,
+      width: viewBox.width + padding * 2,
+      height: viewBox.height + padding * 2,
+    };
+    exportedSvg.setAttribute('viewBox', `${exportViewBox.x} ${exportViewBox.y} ${exportViewBox.width} ${exportViewBox.height}`);
+    exportedSvg.setAttribute('width', '512');
+    exportedSvg.setAttribute('height', '512');
+
+    const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    background.setAttribute('x', String(exportViewBox.x));
+    background.setAttribute('y', String(exportViewBox.y));
+    background.setAttribute('width', String(exportViewBox.width));
+    background.setAttribute('height', String(exportViewBox.height));
+    background.setAttribute('fill', '#fff');
+    exportedSvg.insertBefore(background, exportedSvg.firstChild);
+
     const serializer = new XMLSerializer();
-    const source = serializer.serializeToString(svg);
+    const source = serializer.serializeToString(exportedSvg);
     const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
 
