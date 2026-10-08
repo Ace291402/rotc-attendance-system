@@ -11,6 +11,7 @@ export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [role, setRole] = useState<'admin' | 'officer' | 'cadet'>('officer');
   const [studentNumber, setStudentNumber] = useState('');
   const [fullName, setFullName] = useState('');
@@ -61,7 +62,7 @@ export default function Login() {
         setError(result.message ?? 'Registration failed. Please try again.');
       }
     } else {
-      const result = await onLogin(email, password, role);
+      const result = await onLogin(email, password, role, rememberMe);
       if (!result.success) {
         setError(result.message ?? 'Unable to authenticate. Check your email and password.');
       }
@@ -226,9 +227,20 @@ export default function Login() {
               <input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-800 focus:bg-white text-slate-900" />
               {!isRegistering && (
-                <button type="button" onClick={() => navigate('/forgot-password')} className="text-xs text-slate-500 hover:text-slate-900 cursor-pointer mt-1">
-                  Forgot Password?
-                </button>
+                <>
+                  <label className="flex items-center gap-2 mt-2 text-xs text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 accent-slate-900"
+                    />
+                    Remember me
+                  </label>
+                  <button type="button" onClick={() => navigate('/forgot-password')} className="text-xs text-slate-500 hover:text-slate-900 cursor-pointer mt-1">
+                    Forgot Password?
+                  </button>
+                </>
               )}
             </div>
 

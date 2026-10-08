@@ -1,4 +1,4 @@
-import { api, clearAuthStorage, setAuthToken } from './api';
+import { api, clearAuthStorage } from './api';
 import type { AuthResponse, RegisterResponse, Role } from './types';
 
 function mapFrontendRoleToApiRole(role: Role): string {
@@ -83,8 +83,6 @@ export async function loginUser(username: string, password: string, role: Role):
   });
 
   const authResponse = normalizeAuthResponse(response.data);
-
-  setAuthToken(authResponse.token);
 
   return authResponse;
 }

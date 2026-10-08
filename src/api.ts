@@ -65,36 +65,77 @@ function readMessage(data: unknown, fallback: string) {
 }
 
 export function getAuthToken() {
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem(TOKEN_KEY);
 }
 
-export function setAuthToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setAuthToken(token: string, rememberMe = false) {
+  const storage = rememberMe ? localStorage : sessionStorage;
+  const otherStorage = rememberMe ? sessionStorage : localStorage;
+  otherStorage.removeItem(TOKEN_KEY);
+  otherStorage.removeItem(SESSION_KEY);
+  storage.setItem(TOKEN_KEY, token);
 }
 
 export function clearAuthToken() {
   localStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(TOKEN_KEY);
 }
 
-export function setStoredAuthSession(session: StoredAuthSession) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+export function setStoredAuthSession(session: StoredAuthSession, rememberMe = false) {
+  const storage = rememberMe ? localStorage : sessionStorage;
+  const otherStorage = rememberMe ? sessionStorage : localStorage;
+  otherStorage.removeItem(TOKEN_KEY);
+  otherStorage.removeItem(SESSION_KEY);
+  storage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
-export function getStoredAuthSession(): StoredAuthSession | null {
-  const raw = localStorage.getItem(SESSION_KEY);
-  if (!raw) {
-    return null;
+function isUsableAuthToken(token: string) {
+  const parts = token.split('.');
+  if (parts.length !== 3 || !parts[1]) {
+    return false;
   }
 
   try {
-    return JSON.parse(raw) as StoredAuthSession;
+    const base64Payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(base64Payload.padEnd(Math.ceil(base64Payload.length / 4) * 4, '=')));
+    return typeof payload.exp !== 'number' || payload.exp * 1000 > Date.now();
   } catch {
-    return null;
+    return false;
   }
+}
+
+export function getStoredAuthSession(): StoredAuthSession | null {
+  for (const storage of [localStorage, sessionStorage]) {
+    const token = storage.getItem(TOKEN_KEY);
+    const raw = storage.getItem(SESSION_KEY);
+    if (!token && !raw) {
+      continue;
+    }
+
+    if (!token || !raw || !isUsableAuthToken(token)) {
+      storage.removeItem(TOKEN_KEY);
+      storage.removeItem(SESSION_KEY);
+      continue;
+    }
+
+    try {
+      const session = JSON.parse(raw) as StoredAuthSession;
+      if (!session || typeof session.username !== 'string' || typeof session.role !== 'string' || typeof session.name !== 'string') {
+        throw new Error('Stored authentication session is invalid.');
+      }
+      return session;
+    } catch {
+      storage.removeItem(TOKEN_KEY);
+      storage.removeItem(SESSION_KEY);
+    }
+  }
+
+  return null;
 }
 
 export function clearStoredAuthSession() {
   localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
 }
 
 export function clearAuthStorage() {

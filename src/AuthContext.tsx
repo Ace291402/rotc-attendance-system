@@ -23,7 +23,7 @@ interface Session {
 interface AuthContextValue {
   session: Session | null;
   loading: boolean;
-  login: (username: string, password: string, role: Role) => Promise<{ success: boolean; message?: string }>;
+  login: (username: string, password: string, role: Role, rememberMe?: boolean) => Promise<{ success: boolean; message?: string }>;
   register: (
     username: string,
     password: string,
@@ -72,13 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener('rotc-auth-unauthorized', handleUnauthorized);
   }, [navigate]);
 
-  useEffect(() => {
-    if (session) {
-      setStoredAuthSession(session);
-    }
-  }, [session]);
-
-  const login = async (username: string, password: string, role: Role) => {
+  const login = async (username: string, password: string, role: Role, rememberMe = false) => {
     setLoading(true);
     try {
       const auth = await loginUser(username, password, role);
@@ -93,8 +87,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           cadetId: auth.cadet?.id ?? undefined,
         };
 
-        setAuthToken(auth.token);
-        setStoredAuthSession(nextSession);
+        setAuthToken(auth.token, rememberMe);
+        setStoredAuthSession(nextSession, rememberMe);
         setSession(nextSession);
         navigate(internalRole === 'cadet' ? '/my-attendance' : '/dashboard', { replace: true });
         return { success: true };
