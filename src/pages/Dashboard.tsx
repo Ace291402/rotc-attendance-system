@@ -28,9 +28,9 @@ export default function Dashboard() {
   };
 
   const sortedRecords = useMemo(
-    () => [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    () => [...records].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5),
     [records],
-  );
+  );  
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -45,7 +45,7 @@ export default function Dashboard() {
       ]);
 
       setAllRecords(attendanceData ?? []);
-      setRecords((attendanceData ?? []).slice(0, 5));
+      setRecords(attendanceData ?? []);
       setCadets(cadetData);
       setReport(reportData);
       setSummary(summaryData);
