@@ -25,6 +25,37 @@ export class ApiError extends Error {
   }
 }
 
+function getSafeErrorDetails(data: unknown) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    return undefined;
+  }
+
+  const payload = data as Record<string, unknown>;
+  const details: Record<string, string | number> = {};
+  const redact = (value: string) =>
+    value
+      .replace(/Bearer\s+\S+/gi, 'Bearer [REDACTED]')
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[REDACTED EMAIL]')
+      .replace(/\b(password|token|secret|authorization|api[-_]?key)\b\s*[:=]\s*[^,\s;]+/gi, '$1=[REDACTED]')
+      .slice(0, 500);
+
+  for (const key of ['title', 'type', 'traceId', 'message']) {
+    if (typeof payload[key] === 'string') {
+      details[key] = redact(payload[key] as string);
+    }
+  }
+
+  if (typeof payload.status === 'number') {
+    details.status = payload.status;
+  }
+
+  if (payload.errors && typeof payload.errors === 'object' && !Array.isArray(payload.errors)) {
+    details.validationFields = Object.keys(payload.errors as Record<string, unknown>).slice(0, 20).join(', ');
+  }
+
+  return Object.keys(details).length > 0 ? details : undefined;
+}
+
 const apiBaseUrl = (import.meta.env.VITE_API_URL || 'https://localhost:7055').replace(/\/$/, '');
 
 export const api = axios.create({
@@ -176,6 +207,14 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const data = error.response?.data;
 
+    if (import.meta.env.DEV) {
+      console.error('[api] request failed', {
+        status: status ?? 'network error',
+        requestUrl: error.config?.url?.split(/[?#]/, 1)[0],
+        response: getSafeErrorDetails(data),
+      });
+    }
+
     if (status === 401) {
       clearAuthStorage();
       if (typeof window !== 'undefined') {
@@ -183,26 +222,23 @@ api.interceptors.response.use(
       }
     }
 
-    const message = readMessage(
-      data,
-      status === 401
-        ? 'Session expired. Please log in again.'
-        : status === 403
-          ? 'You do not have permission to perform this action.'
-          : status === 404
-            ? 'The requested resource was not found.'
-            : status === 409
-              ? 'This action conflicts with existing data.'
-              : status === 500
-                ? 'The server failed to process this request.'
-                : error.message || 'Request failed.',
-    );
+    const message = status === 500
+      ? 'The server failed to process this request.'
+      : readMessage(
+          data,
+          status === 401
+            ? 'Session expired. Please log in again.'
+            : status === 403
+              ? 'You do not have permission to perform this action.'
+              : status === 404
+                ? 'The requested resource was not found.'
+                : status === 409
+                  ? 'This action conflicts with existing data.'
+                  : error.message || 'Request failed.',
+        );
 
     return Promise.reject(new ApiError(message, status, data));
   },
 );
-
-
-
 
 

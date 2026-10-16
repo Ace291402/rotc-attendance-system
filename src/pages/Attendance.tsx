@@ -121,9 +121,10 @@ export default function Attendance() {
       setRecords(attendanceData ?? []);
       setCadets(cadetData ?? []);
       setSummary(summaryData);
+      return true;
     } catch (loadError) {
-      console.error(loadError);
       setError(loadError instanceof Error ? loadError.message : 'Unable to load attendance records.');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -272,19 +273,31 @@ export default function Attendance() {
 
           try {
             await createAttendance(parseInt(form.cadetId, 10), {
+              date: new Date(form.date).toISOString(),
               timeIn: form.timeIn || undefined,
               timeOut: form.timeOut || undefined,
               status: form.status,
             });
-            const cadetName = cadets.find((cadet) => Number(cadet.id) === parseInt(form.cadetId, 10))?.fullName ?? 'cadet';
-            setMessage(`Attendance recorded for ${cadetName}.`);
-            resetForm();
-            setFormOpen(false);
-            await loadData();
-            refreshAfterMutation();
           } catch (submitError) {
-            console.error(submitError);
             setError(submitError instanceof Error ? submitError.message : 'Unable to save attendance.');
+            setSaving(false);
+            return;
+          }
+
+          const cadetName = cadets.find((cadet) => Number(cadet.id) === parseInt(form.cadetId, 10))?.fullName ?? 'cadet';
+          setMessage(`Attendance recorded for ${cadetName}.`);
+          resetForm();
+          setFormOpen(false);
+
+          try {
+            const refreshed = await loadData();
+            refreshAfterMutation();
+            if (!refreshed) {
+              setError('Attendance was recorded, but the attendance list could not be refreshed.');
+            }
+          } catch (refreshError) {
+            console.error(refreshError);
+            setError('Attendance was recorded, but the attendance list could not be refreshed.');
           } finally {
             setSaving(false);
           }
