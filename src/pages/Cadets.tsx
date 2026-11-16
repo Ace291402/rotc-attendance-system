@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Eye, LoaderCircle, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { createCadet, deleteCadet, fetchCadets, getCadetById, updateCadet } from '../cadetService';
@@ -29,6 +29,7 @@ function toPayload(form: CadetFormState) {
 
 export default function Cadets() {
   const { session } = useAuth();
+  const savingRef = useRef(false);
   const [cadets, setCadets] = useState<ApiCadet[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,15 +44,17 @@ export default function Cadets() {
   const [selectedCadet, setSelectedCadet] = useState<ApiCadet | null>(null);
   const [form, setForm] = useState<CadetFormState>(EMPTY_FORM);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (): Promise<boolean> => {
     setLoading(true);
     setError('');
     try {
       const data = await fetchCadets();
       setCadets(data);
+      return true;
     } catch (loadError) {
       console.error(loadError);
       setError(loadError instanceof Error ? loadError.message : 'Unable to load cadets.');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -120,11 +123,13 @@ export default function Cadets() {
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (savingRef.current) return;
     if (!form.studentNumber.trim() || !form.fullName.trim() || !form.course.trim() || !form.yearLevel.trim()) {
       setError('All fields are required.');
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
     setError('');
     setMessage('');
@@ -137,12 +142,16 @@ export default function Cadets() {
         setMessage('Cadet created successfully.');
       }
       setFormOpen(false);
-      await loadData();
+      const refreshed = await loadData();
+      if (!refreshed) {
+        setError(`Cadet was ${editingCadetId ? 'updated' : 'created'}, but the list could not be refreshed. Reload the page to verify the record.`);
+      }
       window.dispatchEvent(new Event('rotc-data-changed'));
     } catch (saveError) {
       console.error(saveError);
       setError(saveError instanceof Error ? saveError.message : 'Unable to save cadet.');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

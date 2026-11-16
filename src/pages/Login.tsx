@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Shield, AlertCircle, CheckCircle2 } from 'lucide-react';
 import QRCode from 'react-qr-code';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 
 export default function Login() {
   // Using Auth context
   const { login: onLogin, register: onRegister, loading } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
@@ -18,7 +19,10 @@ export default function Login() {
   const [course, setCourse] = useState('');
   const [yearLevel, setYearLevel] = useState('');
   const [registeredQrCodeId, setRegisteredQrCodeId] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    const state = location.state as { message?: unknown } | null;
+    return typeof state?.message === 'string' ? state.message : '';
+  });
   const [success, setSuccess] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {

@@ -65,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const handleUnauthorized = () => {
       clearAuthStorage();
       setSession(null);
-      navigate('/login', { replace: true });
+      navigate('/login', { replace: true, state: { message: 'Session expired. Please log in again.' } });
     };
 
     window.addEventListener('rotc-auth-unauthorized', handleUnauthorized);
