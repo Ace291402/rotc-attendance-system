@@ -42,6 +42,21 @@ export default function Reports() {
 
   const formatTime = (value?: string | null) => {
     if (!value) return '';
+
+    const timeOnly = /^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?\s*(AM|PM)?$/i.exec(value.trim());
+    if (timeOnly) {
+      const hour = Number(timeOnly[1]);
+      const minute = Number(timeOnly[2]);
+      const second = Number(timeOnly[3] ?? 0);
+      const suffix = timeOnly[4]?.toUpperCase();
+      const validHour = suffix ? hour >= 1 && hour <= 12 : hour <= 23;
+      if (validHour && minute <= 59 && second <= 59) {
+        const hour12 = suffix ? hour : (hour % 12 || 12);
+        const period = suffix ?? (hour < 12 ? 'AM' : 'PM');
+        return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+      }
+    }
+
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return new Intl.DateTimeFormat('en-US', {
@@ -107,6 +122,9 @@ export default function Reports() {
   }, []);
 
   const handleExportCsv = () => {
+    setError('');
+    setMessage('');
+
     if (invalidDateRange) {
       setMessage('End date must be on or after the start date.');
       return;
@@ -118,25 +136,75 @@ export default function Reports() {
     }
 
     const headers = ['ID', 'Cadet Name', 'Attendance Date', 'Time In', 'Time Out', 'Attendance Status'];
-    const rows = filteredRecords.map((record) => [
+    const recordsByDate = [...filteredRecords].sort((a, b) =>
+      getAttendanceDateKey(a.date).localeCompare(getAttendanceDateKey(b.date)),
+    );
+    const firstDate = getAttendanceDateKey(recordsByDate[0].date);
+    const lastDate = getAttendanceDateKey(recordsByDate[recordsByDate.length - 1].date);
+    const formatDateKey = (dateKey: string) => {
+      const date = new Date(`${dateKey}T12:00:00+08:00`);
+      if (Number.isNaN(date.getTime())) return dateKey;
+      return new Intl.DateTimeFormat('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'Asia/Manila',
+      }).format(date);
+    };
+    const reportingPeriod = firstDate === lastDate
+      ? formatDateKey(firstDate)
+      : `${formatDateKey(firstDate)} - ${formatDateKey(lastDate)}`;
+    const generatedAt = new Intl.DateTimeFormat('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Manila',
+      timeZoneName: 'short',
+    }).format(new Date());
+    const dataRows = filteredRecords.map((record) => [
       record.id,
       record.cadet?.fullName ?? `Cadet ${record.cadetId}`,
-      record.date,
-      record.timeIn ?? '',
-      record.timeOut ?? '',
+      formatDateTime(record.date).dateStr,
+      formatTime(record.timeIn),
+      formatTime(record.timeOut),
       record.status ?? '',
     ]);
+    const csvRows: (string | number)[][] = [
+      ['ROTC ATTENDANCE MANAGEMENT SYSTEM'],
+      ['ATTENDANCE REPORT'],
+      ['Report Generated', generatedAt],
+      ['Reporting Period', reportingPeriod],
+      ['Total Attendance Records', filteredRecords.length],
+      [],
+      headers,
+      ...dataRows,
+    ];
+    const escapeCsvValue = (value: string | number) => {
+      const text = String(value);
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const csv = csvRows.map((row) => row.map(escapeCsvValue).join(',')).join('\r\n');
+    let downloadUrl = '';
 
-    const escapeCsvValue = (value: string | number) => `"${String(value).replace(/"/g, '""')}"`;
-    const csv = [headers, ...rows].map((row) => row.map(escapeCsvValue).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `attendance-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    setMessage('Report exported successfully.');
+    try {
+      const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
+      downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `attendance-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+      setMessage('Report exported successfully.');
+    } catch (exportError) {
+      if (downloadUrl) window.URL.revokeObjectURL(downloadUrl);
+      console.error('Unable to export attendance report.', exportError);
+      setError(exportError instanceof Error ? `Unable to export CSV: ${exportError.message}` : 'Unable to export CSV.');
+    }
   };
 
   return (
